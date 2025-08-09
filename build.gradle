@@ -1,8 +1,7 @@
 plugins {
 	id "java"
 	id "java-library"
-	id "maven-publish"
-	id "net.minecrell.licenser" version "0.4.1"
+	id 'maven-publish'
 }
 
 sourceCompatibility = 1.8
@@ -44,11 +43,6 @@ dependencies {
 	testRuntimeOnly 'org.junit.jupiter:junit-jupiter-engine:5.7.1'
 }
 
-license {
-	header project.file("HEADER")
-	include "**/*.java"
-}
-
 jar {
 	manifest {
 		attributes 'Implementation-Title': 'Stitch',
@@ -58,7 +52,7 @@ jar {
 }
 
 task allJar(type: Jar) {
-	from {
+	/*from {
 		configurations.ship.collect {
 			it.isDirectory() ? it : zipTree(it)
 		}
@@ -69,7 +63,7 @@ task allJar(type: Jar) {
 				'Main-Class': "net.fabricmc.stitch.Main"
 	}
 	archiveClassifier = 'all'
-	with jar
+	with jar*/
 }
 
 java {
@@ -86,9 +80,13 @@ tasks.withType(JavaCompile).configureEach {
 
 publishing {
 	publications {
-		mavenJava(MavenPublication) {
+		/*mavenJava(MavenPublication) {
 			from components.java
 			artifact(allJar)
+		}*/
+		mavenJava(MavenPublication) {
+			from components.java
+			withoutBuildIdentifier()
 		}
 	}
 
@@ -123,4 +121,4 @@ task checkVersion {
 	}
 }
 
-publish.mustRunAfter checkVersion
+// publish.mustRunAfter checkVersion
