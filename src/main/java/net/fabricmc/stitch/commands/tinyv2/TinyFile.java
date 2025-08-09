@@ -37,7 +37,12 @@ public class TinyFile {
 	 * Useful for quickly retrieving a class based on a known name in the first namespace.
 	 */
 	public Map<String, TinyClass> mapClassesByFirstNamespace() {
-		return classEntries.stream().collect(Collectors.toMap(c -> c.getClassNames().get(0), c -> c));
+		// return classEntries.stream().collect(Collectors.toMap(c -> c.getClassNames().get(0), c -> c));
+		return mapClassesByNamespace(0);
+	}
+
+	public Map<String, TinyClass> mapClassesByNamespace(int namespace) {
+		return classEntries.stream().collect(Collectors.toMap(c -> c.getClassNames().get(namespace), c -> c));
 	}
 
 	public TinyHeader getHeader() {

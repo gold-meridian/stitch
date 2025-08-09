@@ -16,405 +16,424 @@
 
 package net.fabricmc.stitch.commands;
 
-import net.fabricmc.stitch.Command;
-
 import java.io.BufferedReader;
 import java.io.BufferedWriter;
-import java.io.File;
 import java.io.IOException;
-import java.nio.charset.Charset;
+import java.io.InputStream;
 import java.nio.file.Files;
-import java.util.*;
+import java.nio.file.Path;
+import java.nio.file.Paths;
+import java.nio.file.StandardOpenOption;
+import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.Collections;
+import java.util.Comparator;
+import java.util.HashMap;
+import java.util.List;
+import java.util.Locale;
+import java.util.Map;
+import java.util.Objects;
+import java.util.Set;
+import java.util.function.Function;
+import java.util.stream.Stream;
 
-// TODO: Remap descriptors on fields and methods.
+import org.objectweb.asm.Type;
+
+import net.fabricmc.mappings.ClassEntry;
+import net.fabricmc.mappings.EntryTriple;
+import net.fabricmc.mappings.FieldEntry;
+import net.fabricmc.mappings.Mappings;
+import net.fabricmc.mappings.MappingsProvider;
+import net.fabricmc.mappings.MethodEntry;
+import net.fabricmc.stitch.Command;
+import net.fabricmc.stitch.commands.CommandMergeTiny.TinyLine.ContextLine;
+import net.fabricmc.stitch.commands.CommandMergeTiny.TinyFile.ClassLine;
+import net.fabricmc.stitch.commands.CommandMergeTiny.TinyFile.FieldLine;
+import net.fabricmc.stitch.commands.CommandMergeTiny.TinyFile.MethodLine;
+
 public class CommandMergeTiny extends Command {
-	public enum TinyEntryType {
-		ROOT,
-		CLASS,
-		FIELD,
-		METHOD;
-
-		private static Map<String, TinyEntryType> BY_NAME = new HashMap<>();
-
-		public static TinyEntryType byName(String s) {
-			return BY_NAME.get(s);
-		}
-
-		static {
-			for (TinyEntryType type : values()) {
-				BY_NAME.put(type.name(), type);
-			}
-		}
-	}
-
-	public static class TinyEntry {
-		public final TinyEntryType type;
-		public final String header;
-		// Map<index, name>
-		public final Map<String, String> names = new HashMap<>();
-		// Table<index, name, instance>
-		private final Map<String, Map<String, TinyEntry>> children = new HashMap<>();
-		private TinyEntry parent;
-
-		public TinyEntry(TinyEntryType type, String header) {
-			this.type = type;
-			this.header = header;
-		}
-
-		public TinyEntry getParent() {
-			return parent;
-		}
-
-		public boolean containsChild(String key, String value) {
-			Map<String, TinyEntry> map = children.get(key);
-			return map != null && map.containsKey(value);
-		}
-
-		public TinyEntry getChild(String key, String value) {
-			Map<String, TinyEntry> map = children.get(key);
-			return map != null ? map.get(value) : null;
-		}
-
-		public void putChild(String key, String value, TinyEntry entry) {
-			children.computeIfAbsent(key, (s) -> new HashMap<>()).put(value, entry);
-		}
-
-		public void addChild(TinyEntry entry, String nameSuffix) {
-			entry.parent = this;
-
-			for (Map.Entry<String, String> e : entry.names.entrySet()) {
-				String key = e.getKey();
-				String value = e.getValue() + nameSuffix;
-
-				if (containsChild(key, value)) {
-					throw new RuntimeException("Duplicate TinyEntry: (" + key + ", " + value + ")!");
-				}
-
-				putChild(key, value, entry);
-			}
-		}
-
-		public Map<String, TinyEntry> getChildRow(String key) {
-			//noinspection unchecked
-			return children.getOrDefault(key, Collections.EMPTY_MAP);
-		}
-	}
-
-	public static class TinyFile {
-		public final String[] indexList;
-		public final TinyEntry root = new TinyEntry(TinyEntryType.ROOT, "");
-		public final int typeCount;
-
-		public TinyFile(File f) throws IOException {
-			try (BufferedReader reader = Files.newBufferedReader(f.toPath(), Charset.forName("UTF-8"))) {
-				String[] header = reader.readLine().trim().split("\t");
-				if (header.length < 3 || !header[0].trim().equals("v1")) {
-					throw new RuntimeException("Invalid header!");
-				}
-
-				typeCount = header.length - 1;
-				indexList = new String[typeCount];
-				for (int i = 0; i < typeCount; i++) {
-					indexList[i] = header[i + 1].trim();
-				}
-
-				String line;
-				while ((line = reader.readLine()) != null) {
-					line = line.trim();
-					if (line.length() == 0 || line.charAt(0) == '#') {
-						continue;
-					}
-
-					String[] parts = line.split("\t");
-					for (int i = 0; i < parts.length; i++) {
-						parts[i] = parts[i].trim();
-					}
-
-					StringBuilder prefix = new StringBuilder();
-					prefix.append(parts[0]);
-					for (int i = 1; i < parts.length - typeCount; i++) {
-						prefix.append('\t');
-						prefix.append(parts[i]);
-					}
-
-					TinyEntryType type = TinyEntryType.byName(parts[0]);
-					String[] path = parts[1].split("\\$");
-					TinyEntry parent = root;
-
-					for (int i = 0; i < (type == TinyEntryType.CLASS ? path.length - 1 : path.length); i++) {
-						TinyEntry nextParent = parent.getChild(indexList[0], path[i]);
-						if (nextParent == null) {
-							nextParent = new TinyEntry(TinyEntryType.CLASS, "CLASS");
-							nextParent.names.put(indexList[0], path[i]);
-							parent.addChild(nextParent, "");
-						}
-						parent = nextParent;
-					}
-
-					TinyEntry entry;
-					if (type == TinyEntryType.CLASS && parent.containsChild(indexList[0], path[path.length - 1])) {
-						entry = parent.getChild(indexList[0], path[path.length - 1]);
-					} else {
-						entry = new TinyEntry(type, prefix.toString());
-					}
-
-					String[] names = new String[typeCount];
-					for (int i = 0; i < typeCount; i++) {
-						names[i] = parts[parts.length - typeCount + i];
-						if (type == TinyEntryType.CLASS) {
-							// add classes by their final inner class name
-							String[] splitly = names[i].split("\\$");
-							entry.names.put(indexList[i], splitly[splitly.length - 1]);
-						} else {
-							entry.names.put(indexList[i], names[i]);
-						}
-					}
-
-					switch (type) {
-						case CLASS:
-							parent.addChild(entry, "");
-							break;
-						case FIELD:
-						case METHOD:
-							parent.addChild(entry, parts[2]);
-							break;
-					}
-				}
-			}
-		}
-/*
-		public String match(String[] entries, String key) {
-			if (indexMap.containsKey(key)) {
-				return entries[indexMap.get(key)];
-			} else {
-				return null;
-			}
-		}
-*/
-	}
-
-	private List<String> mappingBlankFillOrder = new ArrayList<>();
-	private String sharedIndexName;
-
 	public CommandMergeTiny() {
 		super("mergeTiny");
 	}
 
 	@Override
 	public String getHelpString() {
-		return "<input-a> <input-b> <output> [mappingBlankFillOrder...]";
+		return "<input-a> <input-b> <output> [-c|--common-namespace <namespace>] [-h|--leave-holes]";
 	}
 
 	@Override
 	public boolean isArgumentCountValid(int count) {
-		return count >= 4;
+		return count >= 3;
 	}
 
-	private TinyFile inputA, inputB;
+	public static abstract class TinyLine {
+		public final String line;
 
-	private String fixMatch(TinyEntry a, TinyEntry b, String matchA, String index) {
-		if (a == null || matchA == null) {
-			return matchA;
+		public TinyLine(String line) {
+			this.line = line;
 		}
 
-		if (a.type == TinyEntryType.CLASS && a.getParent() != null && a.getParent().type == TinyEntryType.CLASS) {
-			// First, map to the shared index name (sharedIndexName)
-			String officialPath = a.names.get(sharedIndexName);
-			TinyEntry officialEntry = a.getParent();
-			while (officialEntry.type == TinyEntryType.CLASS) {
-				officialPath = officialEntry.names.get(sharedIndexName) + "$" + officialPath;
-				officialEntry = officialEntry.getParent();
+		public static final class ContextLine extends TinyLine {
+			ContextLine(String line) {
+				super(line);
 			}
+		}
+	}
 
-			// Now, traverse it from the ROOT and get the names
-			Set<String> matchingOrder = new LinkedHashSet<>();
-			matchingOrder.add(index);
-			matchingOrder.addAll(mappingBlankFillOrder);
+	public static final class TinyFile {
+		public class ClassLine extends TinyLine implements ClassEntry {
+			private final String[] names;
 
-			String[] path = officialPath.split("\\$");
-			a = inputA.root;
-			b = inputB.root;
+			ClassLine(String line, String[] data, String[] namespaceList) {
+				super(line);
 
-			StringBuilder targetName = new StringBuilder();
-
-			for (int i = 0; i < path.length; i++) {
-				if (i > 0) {
-					targetName.append('$');
+				names = new String[namespaceList.length];
+				for (int i = 0, end = Math.min(namespaceList.length, data.length - 1); i < end; i++) {
+					if (data[i + 1].isEmpty()) continue; //Skip holes
+					names[i] = data[i + 1];
 				}
 
-				a = a != null ? a.getChild(sharedIndexName, path[i]) : null;
-				b = b != null ? b.getChild(sharedIndexName, path[i]) : null;
-				boolean appended = false;
+				assert Arrays.stream(names).filter(Objects::nonNull).noneMatch(String::isEmpty);
+			}
 
-				for (String mName : matchingOrder) {
-					String nameA = a != null ? a.names.get(mName) : null;
-					String nameB = b != null ? b.names.get(mName) : null;
+			@Override
+			public String get(String namespace) {
+				return names[namespacesToIds.get(namespace)];
+			}
 
-					if (nameA != null) {
-						targetName.append(nameA);
-						appended = true;
-						break;
-					} else if (nameB != null) {
-						targetName.append(nameB);
-						appended = true;
-						break;
+			public Stream<String> parts() {
+				return Arrays.stream(names);
+			}
+		}
+		public class FieldLine extends TinyLine implements FieldEntry {
+			private final EntryTriple nativeTriple;
+			private final String[] names;
+
+			FieldLine(String line, String[] data, String[] namespaceList) {
+				super(line);
+
+				nativeTriple = new EntryTriple(data[1], data[3], data[2]);
+
+				names = new String[namespaceList.length];
+				for (int i = 0, end = Math.min(namespaceList.length, data.length - 3); i < end; i++) {
+					if (data[3 + i].isEmpty()) continue; //Skip holes
+					names[i] = data[3 + i];
+				}
+
+				assert Arrays.stream(names).filter(Objects::nonNull).noneMatch(String::isEmpty);
+			}
+
+			@Override
+			public EntryTriple get(String namespace) {
+				if (nativeNamespace.equals(namespace)) return nativeTriple;
+
+				String name = names[namespacesToIds.get(namespace)];
+				if (name == null) return null; //Hole in the mappings, don't provide an EntryTriple with a null name
+				return new EntryTriple(remap(nativeTriple.getOwner(), namespace), name, remapDesc(Type.getType(nativeTriple.getDesc()), namespace));
+			}
+
+			private String remapDesc(Type type, String namespace) {
+				switch (type.getSort()) {
+					case Type.ARRAY: {
+						StringBuilder out = new StringBuilder(remapDesc(type.getElementType(), namespace));
+
+						for (int i = 0; i < type.getDimensions(); ++i) {
+							out.insert(0, '[');
+						}
+
+						return out.toString();
+					}
+
+					case Type.OBJECT: {
+						String out = remap(type.getInternalName(), namespace);
+						assert out != null;
+						return 'L' + out + ';';
+					}
+
+					case Type.METHOD: {
+						if ("()V".equals(type.getDescriptor())) {
+							return "()V";
+						}
+
+						Type[] args = type.getArgumentTypes();
+						StringBuilder out = new StringBuilder("(");
+						for (int i = 0; i < args.length; i++) {
+							out.append(remapDesc(args[i], namespace));
+						}
+
+						Type returnType = type.getReturnType();
+						if (returnType == Type.VOID_TYPE) {
+							return out.append(")V").toString();
+						}
+
+						return out.append(')').append(remapDesc(returnType, namespace)).toString();
+					}
+
+					default:
+						return type.getDescriptor();
+				}
+			}
+
+			public Stream<EntryTriple> parts() {
+				return getSortedNamespaces().map(this::get);
+			}
+
+			public Stream<String> names() {
+				return Arrays.stream(names);
+			}
+		}
+		public class MethodLine extends FieldLine implements MethodEntry {
+			MethodLine(String line, String[] data, String[] namespaceList) {
+				super(line, data, namespaceList);
+			}
+		}
+		final Map<String, Integer> namespacesToIds = new HashMap<>();
+		private final Map<String, ClassLine> nativeClassLines = new HashMap<>();
+		public final String nativeNamespace;
+
+		public final String firstLine;
+		private final List<TinyLine> lines = new ArrayList<>();
+
+		public TinyFile(Path file) throws IOException {
+			try (BufferedReader reader = Files.newBufferedReader(file)) {
+				String[] header = (firstLine = reader.readLine()).split("\t");
+				if (header.length <= 1 || !header[0].equals("v1")) {
+					throw new IOException("Invalid mapping version!");
+				}
+
+				String[] namespaceList = new String[header.length - 1];
+				for (int i = 1; i < header.length; i++) {
+					namespaceList[i - 1] = header[i];
+
+					if (namespacesToIds.put(header[i], i - 1) != null) {
+						throw new IOException("Duplicate namespace: " + header[i]);
 					}
 				}
+				nativeNamespace = header[1];
 
-				if (!appended) {
-					throw new RuntimeException("Could not find mapping for " + officialPath + "!");
-				}
-			}
+				String line;
+				while ((line = reader.readLine()) != null) {
+					String[] splitLine = line.split("\t");
 
-			return targetName.toString();
-		}
+					if (splitLine.length >= 2) {
+						switch (splitLine[0]) {
+							case "CLASS":
+								ClassLine tinyLine = new ClassLine(line, splitLine, namespaceList);
+								lines.add(tinyLine);
+								nativeClassLines.put(tinyLine.get(nativeNamespace), tinyLine);
+								break;
 
-		return matchA;
-	}
+							case "FIELD":
+								lines.add(new FieldLine(line, splitLine, namespaceList));
+								break;
 
-	private String getMatch(TinyEntry a, TinyEntry b, String index, String realIndex) {
-		String matchA = a != null ? a.names.get(index) : null;
-		String matchB = b != null ? b.names.get(index) : null;
-
-		assert a == null || b == null || a.type == b.type;
-
-		matchA = fixMatch(a, b, matchA, realIndex);
-		matchB = fixMatch(b, a, matchB, realIndex);
-
-		if (matchA != null) {
-			if (matchB != null && !matchA.equals(matchB)) {
-				throw new RuntimeException("No match: " + index + " " + matchA + " " + matchB);
-			}
-
-			return matchA;
-		} else {
-			return matchB;
-		}
-	}
-
-	private String getEntry(TinyEntry a, TinyEntry b, List<String> totalIndexList) {
-		if (a != null && b != null && !(a.header.equals(b.header))) {
-			throw new RuntimeException("Header mismatch: " + a.header + " != " + b.header);
-		} else if (a != null && b != null && a.type != b.type) {
-			throw new RuntimeException("Type mismatch: " + a.type + " != " + b.type);
-		}
-
-		String header = a != null ? a.header : b.header;
-		StringBuilder entry = new StringBuilder();
-		entry.append(header);
-
-		for (String index : totalIndexList) {
-			entry.append('\t');
-
-			String match = getMatch(a, b, index, index);
-			if (match == null) {
-				for (String s : mappingBlankFillOrder) {
-					match = getMatch(a, b, s, index);
-					if (match != null) {
-						break;
+							case "METHOD":
+								lines.add(new MethodLine(line, splitLine, namespaceList));
+								break;
+						}
+					} else {
+						lines.add(new ContextLine(line));
 					}
 				}
+			}
+		}
 
-				if (match == null) {
-					throw new RuntimeException("TODO");
-				}
+		String remap(String className, String namespace) {
+			ClassLine line = nativeClassLines.get(className);
+
+			if (line != null) {
+				String name = line.get(namespace);
+				if (name != null) return name;
 			}
 
-			entry.append(match);
+			return className;
 		}
 
-		entry.append('\n');
-		return entry.toString();
-	}
-
-	public void write(TinyEntry inputA, TinyEntry inputB, String index, String c, BufferedWriter writer, List<String> totalIndexList, int indent) throws IOException {
-		TinyEntry classA = inputA != null ? inputA.getChild(index, c) : null;
-		TinyEntry classB = inputB != null ? inputB.getChild(index, c) : null;
-
-		/* for (int i = 0; i <= indent; i++)
-			System.out.print("-");
-		System.out.println(" " + c + " " + (classA != null ? "Y" : "N") + " " + (classB != null ? "Y" : "N")); */
-
-		if ((classA == null || classA.names.size() == 0) && (classB == null || classB.names.size() == 0)) {
-			System.out.println("Warning: empty!");
-			return;
+		public Set<String> getNamespaces() {
+			return namespacesToIds.keySet();
 		}
 
-		writer.write(getEntry(classA, classB, totalIndexList));
+		public Stream<String> getSortedNamespaces() {
+			return getNamespaces().stream().sorted(Comparator.comparingInt(firstLine::indexOf));
+		}
 
-		Set<String> subKeys = new TreeSet<>();
-		if (classA != null) subKeys.addAll(classA.getChildRow(index).keySet());
-		if (classB != null) subKeys.addAll(classB.getChildRow(index).keySet());
-		for (String cc : subKeys) {
-			write(classA, classB, index, cc, writer, totalIndexList, indent + 1);
+		public List<TinyLine> lines() {
+			return Collections.unmodifiableList(lines);
 		}
 	}
-
-	public void run(File inputAf, File inputBf, File outputf, String... mappingBlankFillOrderValues) throws IOException {
-		for (String s : mappingBlankFillOrderValues) {
-			if (!this.mappingBlankFillOrder.contains(s)) {
-				this.mappingBlankFillOrder.add(s);
-			}
-		}
-
-		System.out.println("Reading " + inputAf.getName());
-		inputA = new TinyFile(inputAf);
-
-		System.out.println("Reading " + inputBf.getName());
-		inputB = new TinyFile(inputBf);
-
-		System.out.println("Processing...");
-		try (BufferedWriter writer = Files.newBufferedWriter(outputf.toPath(), Charset.forName("UTF-8"))) {
-			if (!inputA.indexList[0].equals(inputB.indexList[0])) {
-				throw new RuntimeException("TODO");
-			}
-
-			sharedIndexName = inputA.indexList[0];
-
-			// Set<String> matchedIndexes = Sets.intersection(inputA.indexMap.keySet(), inputB.indexMap.keySet());
-			Set<String> matchedIndexes = Collections.singleton(inputA.indexList[0]);
-			List<String> totalIndexList = new ArrayList<>(Arrays.asList(inputA.indexList));
-			for (String s : inputB.indexList) {
-				if (!totalIndexList.contains(s)) {
-					totalIndexList.add(s);
-				}
-			}
-			int totalIndexCount = totalIndexList.size();
-
-			// emit header
-			StringBuilder header = new StringBuilder();
-			header.append("v1");
-			for (String s : totalIndexList) {
-				header.append('\t');
-				header.append(s);
-			}
-			writer.write(header.append('\n').toString());
-
-			// collect classes
-			String index = inputA.indexList[0];
-			Set<String> classKeys = new TreeSet<>();
-			classKeys.addAll(inputA.root.getChildRow(index).keySet());
-			classKeys.addAll(inputB.root.getChildRow(index).keySet());
-
-			// emit entries
-			for (String c : classKeys) {
-				write(inputA.root, inputB.root, index, c, writer, totalIndexList, 0);
-			}
-		}
-		System.out.println("Done!");
-	}
-
 	@Override
 	public void run(String[] args) throws Exception {
-		File inputAf = new File(args[0]);
-		File inputBf = new File(args[1]);
-		File outputf = new File(args[2]);
-
-		String[] mbforder = new String[args.length - 3];
+		String commonNamespace = null;
+		boolean leaveHoles = false;
 		for (int i = 3; i < args.length; i++) {
-			mbforder[i - 3] = args[i];
+			switch (args[i].toLowerCase(Locale.ROOT)) {
+				case "-c":
+				case "--common-namespace":
+					commonNamespace = args[++i];
+					break;
+
+				case "-h":
+				case "--leave-holes":
+					leaveHoles = true;
+					break;
+			}
 		}
 
-		run(inputAf, inputBf, outputf, mbforder);
+		run(Paths.get(args[0]), Paths.get(args[1]), Paths.get(args[2]), commonNamespace, leaveHoles);
+	}
+
+	public static void run(Path firstInput, Path secondInput, Path output, String commonNamespace, boolean leaveHoles) throws IOException {
+		TinyFile inputA = new TinyFile(firstInput);
+
+		Mappings inputB;
+		try (InputStream in = Files.newInputStream(secondInput)) {
+			inputB = MappingsProvider.readTinyMappings(in);
+		}
+
+		if (commonNamespace == null) {
+			List<String> namespaces = new ArrayList<>(inputA.getNamespaces());
+			namespaces.retainAll(inputB.getNamespaces());
+
+			switch (namespaces.size()) {
+				case 0:
+					throw new IllegalArgumentException("No common namespaces between inputs, only found A: " + inputA.getNamespaces() + ", B: " + inputB.getNamespaces());
+
+				case 1:
+					commonNamespace = namespaces.get(0);
+					break;
+
+				default:
+					throw new IllegalArgumentException("Multiple common namespaces between inputs: " + namespaces + ", specify the desired common namespace via -c");
+			}
+		} else {
+			if (!inputA.getNamespaces().contains(commonNamespace)) {
+				throw new IllegalArgumentException("Unable to find specified common namespace in A input, only found " + inputA.getNamespaces());
+			}
+			if (!inputB.getNamespaces().contains(commonNamespace)) {
+				throw new IllegalArgumentException("Unable to find specified common namespace in B input, only found " + inputB.getNamespaces());
+			}
+		}
+
+		String commonNamespaceTarget = commonNamespace;
+		Map<String, ClassEntry> commonToAllB = commonToAll(inputB.getClassEntries(), entry -> entry.get(commonNamespaceTarget));
+
+		Map<EntryTriple, MethodEntry> classToMethod = commonToAll(inputB.getMethodEntries(), method -> method.get(commonNamespaceTarget));
+		Map<EntryTriple, FieldEntry> classToField = commonToAll(inputB.getFieldEntries(), field -> field.get(commonNamespaceTarget));
+
+		try (BufferedWriter writer = Files.newBufferedWriter(output, StandardOpenOption.CREATE_NEW, StandardOpenOption.WRITE)) {
+			List<String> extraNamespaces = new ArrayList<>(inputB.getNamespaces());
+			extraNamespaces.removeAll(inputA.getNamespaces());
+			if (extraNamespaces.isEmpty()) throw new IllegalArgumentException("No additional namespaces to merge from B");
+
+			writer.write(inputA.firstLine);
+			for (String namespace : extraNamespaces) {
+				writer.write('\t');
+				writer.write(namespace);
+			}
+			writer.newLine();
+
+			for (TinyLine line : inputA.lines()) {
+				Class<? extends TinyLine> lineType = line.getClass();
+
+				if (lineType == ContextLine.class) {
+					writer.write(line.line);
+					writer.newLine();
+				} else if (lineType == ClassLine.class) {
+					writer.write(line.line);
+
+					String commonName = ((ClassLine) line).get(commonNamespaceTarget);
+					ClassEntry commonEntry = commonToAllB.get(commonName);
+
+					on: for (String namespace : extraNamespaces) {
+						writer.write('\t');
+
+						if (commonEntry != null) {
+							String name = commonEntry.get(namespace);
+							if (name != null) writer.write(name);
+						} else if (!leaveHoles) {
+							int split = commonName.lastIndexOf('$');
+
+							out: if (split > 0) {
+								String start = commonName.substring(0, split);
+								StringBuilder end = new StringBuilder(commonName.substring(split + 1));
+
+								ClassEntry partialEntry;
+								while ((partialEntry = commonToAllB.get(start)) == null) {
+									split = start.lastIndexOf('$');
+									if (split < 1) break out;
+
+									end.insert(0, '$').insert(0, start.substring(split + 1));
+									start = start.substring(0, split);
+								};
+
+								assert partialEntry != null;
+								String partialName = partialEntry.get(namespace);
+								if (partialName != null) {
+									writer.write(partialName);
+									writer.write('$');
+									writer.write(end.toString());
+								}
+
+								continue on;
+							}
+
+							writer.write(commonName);
+						}
+					}
+
+					writer.newLine();
+				} else if (lineType == MethodLine.class) {
+					writer.write(line.line);
+
+					EntryTriple commonName = ((MethodLine) line).get(commonNamespaceTarget);
+					MethodEntry commonEntry = classToMethod.get(commonName);
+
+					for (String namespace : extraNamespaces) {
+						writer.write('\t');
+
+						if (commonEntry != null) {
+							EntryTriple entry = commonEntry.get(namespace);
+							if (entry != null) writer.write(entry.getName());
+						} else if (!leaveHoles) {
+							writer.write(commonName.getName());
+						}
+					}
+
+					writer.newLine();
+				} else if (lineType == FieldLine.class) {
+					writer.write(line.line);
+
+					EntryTriple commonName = ((FieldLine) line).get(commonNamespaceTarget);
+					FieldEntry commonEntry = classToField.get(commonName);
+
+					for (String namespace : extraNamespaces) {
+						writer.write('\t');
+
+						if (commonEntry != null) {
+							EntryTriple entry = commonEntry.get(namespace);
+							if (entry != null) writer.write(entry.getName());
+						} else if (!leaveHoles) {
+							writer.write(commonName.getName());
+						}
+					}
+
+					writer.newLine();
+				} else {
+					throw new IllegalStateException("Unexpected tiny line: " + line + " (" + lineType + ')');
+				}
+			}
+		}
+	}
+
+	private static <K, T> Map<K, T> commonToAll(Iterable<? extends T> entries, Function<T, K> converter) {
+		Map<K, T> map = new HashMap<>();
+
+		for (T entry : entries) {
+			K name = converter.apply(entry);
+			if (name == null) throw new IllegalArgumentException("Common mapping target has holes");
+			map.put(name, entry);
+		}
+
+		return map;
 	}
 }

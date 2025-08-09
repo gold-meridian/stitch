@@ -56,6 +56,14 @@ public class TinyMethod implements Comparable<TinyMethod>, Mapping {
 		return localVariables.stream().collect(Collectors.toMap(lv -> lv.getLocalVariableNames().get(0), lv -> lv));
 	}
 
+	public Map<Integer, TinyMethodParameter> mapParametersByLvIndex() {
+		return parameters.stream().collect(Collectors.toMap(TinyMethodParameter::getLvIndex, p -> p));
+	}
+
+	public Map<Integer, TinyLocalVariable> mapLocalVariablesByLvIndex() {
+		return localVariables.stream().collect(Collectors.toMap(TinyLocalVariable::getLvIndex, lv -> lv));
+	}
+
 	public String getMethodDescriptorInFirstNamespace() {
 		return methodDescriptorInFirstNamespace;
 	}

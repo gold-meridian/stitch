@@ -56,13 +56,22 @@ public class TinyClass implements Comparable<TinyClass>, Mapping {
 	 * The key format is firstMethodName + descriptor
 	 */
 	public Map<Pair<String, String>, TinyMethod> mapMethodsByFirstNamespaceAndDescriptor() {
-		return methods.stream().collect(Collectors.toMap(m -> Pair.of(m.getMethodNames().get(0), m.getMethodDescriptorInFirstNamespace()), m -> m));
+		// return methods.stream().collect(Collectors.toMap(m -> Pair.of(m.getMethodNames().get(0), m.getMethodDescriptorInFirstNamespace()), m -> m));
+		return mapMethodsByNamespaceAndDescriptor(0);
+	}
+
+	public Map<Pair<String, String>, TinyMethod> mapMethodsByNamespaceAndDescriptor(int namespace) {
+		return methods.stream().collect(Collectors.toMap(m -> Pair.of(m.getMethodNames().get(namespace), m.getMethodDescriptorInFirstNamespace()), m -> m));
 	}
 
 	public Map<String, TinyField> mapFieldsByFirstNamespace() {
-		return fields.stream().collect(Collectors.toMap(f -> f.getFieldNames().get(0), f -> f));
+		// return fields.stream().collect(Collectors.toMap(f -> f.getFieldNames().get(0), f -> f));
+		return mapFieldsByNamespace(0);
 	}
 
+	public Map<String, TinyField> mapFieldsByNamespace(int namespace) {
+		return fields.stream().collect(Collectors.toMap(f -> f.getFieldNames().get(namespace), f -> f));
+	}
 
 	public List<String> getClassNames() {
 		return classNames;
