@@ -16,9 +16,12 @@
 
 package net.fabricmc.stitch.representation;
 
-import net.fabricmc.stitch.util.StitchUtil;
+import java.util.Collection;
+import java.util.Collections;
+import java.util.LinkedList;
+import java.util.Set;
 
-import java.util.*;
+import net.fabricmc.stitch.util.StitchUtil;
 
 /**
  * TODO: This doesn't try to follow the JVM's logic at all.
@@ -26,45 +29,45 @@ import java.util.*;
  * where it could get away with naming them differently.
  */
 public class ClassPropagationTree {
-    private final ClassStorage jar;
-    private final Set<JarClassEntry> relevantClasses;
-    private final Set<JarClassEntry> topmostClasses;
+	private final ClassStorage jar;
+	private final Set<JarClassEntry> relevantClasses;
+	private final Set<JarClassEntry> topmostClasses;
 
-    public ClassPropagationTree(ClassStorage jar, JarClassEntry baseClass) {
-        this.jar = jar;
-        relevantClasses = StitchUtil.newIdentityHashSet();
-        topmostClasses = StitchUtil.newIdentityHashSet();
+	public ClassPropagationTree(ClassStorage jar, JarClassEntry baseClass) {
+		this.jar = jar;
+		relevantClasses = StitchUtil.newIdentityHashSet();
+		topmostClasses = StitchUtil.newIdentityHashSet();
 
-        LinkedList<JarClassEntry> queue = new LinkedList<>();
-        queue.add(baseClass);
+		LinkedList<JarClassEntry> queue = new LinkedList<>();
+		queue.add(baseClass);
 
-        while (!queue.isEmpty()) {
-            JarClassEntry entry = queue.remove();
-            if (entry == null || relevantClasses.contains(entry)) {
-                continue;
-            }
-            relevantClasses.add(entry);
+		while (!queue.isEmpty()) {
+			JarClassEntry entry = queue.remove();
+			if (entry == null || relevantClasses.contains(entry)) {
+				continue;
+			}
+			relevantClasses.add(entry);
 
-            int qSize = queue.size();
-            queue.addAll(entry.getSubclasses(jar));
-            queue.addAll(entry.getImplementers(jar));
-            if (qSize == queue.size()) {
-                topmostClasses.add(entry);
-            }
+			int qSize = queue.size();
+			queue.addAll(entry.getSubclasses(jar));
+			queue.addAll(entry.getImplementers(jar));
+			if (qSize == queue.size()) {
+				topmostClasses.add(entry);
+			}
 
-            queue.addAll(entry.getInterfaces(jar));
-            JarClassEntry superClass = entry.getSuperClass(jar);
-            if (superClass != null) {
-                queue.add(superClass);
-            }
-        }
-    }
+			queue.addAll(entry.getInterfaces(jar));
+			JarClassEntry superClass = entry.getSuperClass(jar);
+			if (superClass != null) {
+				queue.add(superClass);
+			}
+		}
+	}
 
-    public Collection<JarClassEntry> getClasses() {
-        return Collections.unmodifiableSet(relevantClasses);
-    }
+	public Collection<JarClassEntry> getClasses() {
+		return Collections.unmodifiableSet(relevantClasses);
+	}
 
-    public Collection<JarClassEntry> getTopmostClasses() {
-        return Collections.unmodifiableSet(topmostClasses);
-    }
+	public Collection<JarClassEntry> getTopmostClasses() {
+		return Collections.unmodifiableSet(topmostClasses);
+	}
 }

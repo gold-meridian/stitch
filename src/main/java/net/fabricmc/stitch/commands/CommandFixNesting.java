@@ -29,21 +29,6 @@ public class CommandFixNesting extends Command {
 		super("fixNesting");
 	}
 
-	@Override
-	public String getHelpString() {
-		return "<jar>";
-	}
-
-	@Override
-	public boolean isArgumentCountValid(int count) {
-		return count == 1;
-	}
-
-	@Override
-	public void run(String[] args) throws Exception {
-		run(new File(args[0]));
-	}
-
 	public static void run(File jar) throws IOException {
 		JarRootEntry jarEntry = new JarRootEntry(jar);
 		Builder.create(jarEntry).joinMethodEntries(false).build().apply();
@@ -59,7 +44,7 @@ public class CommandFixNesting extends Command {
 				List<JarClassEntry> missingInners = new ArrayList<>();
 				String missingOuter = null;
 
-				for (Enumeration<JarEntry> it = oldJarFile.entries(); it.hasMoreElements();) {
+				for (Enumeration<JarEntry> it = oldJarFile.entries(); it.hasMoreElements(); ) {
 					JarEntry entry = it.nextElement();
 					if (entry.isDirectory()) continue; //No need to copy these over
 
@@ -70,7 +55,7 @@ public class CommandFixNesting extends Command {
 
 					if (entry.getName().endsWith(".class")) {
 						JarClassEntry clazz = jarEntry.getClass(entry.getName().substring(0, entry.getName().lastIndexOf('.')), false);
-						assert clazz != null: "Unable to find class entry for " + entry.getName();
+						assert clazz != null : "Unable to find class entry for " + entry.getName();
 
 						ClassReader reader = null;
 						ClassNode node = null;
@@ -148,5 +133,20 @@ public class CommandFixNesting extends Command {
 	private static String getParent(String name) {
 		int split = name.lastIndexOf('$');
 		return split <= 0 ? null : name.substring(0, split);
+	}
+
+	@Override
+	public String getHelpString() {
+		return "<jar>";
+	}
+
+	@Override
+	public boolean isArgumentCountValid(int count) {
+		return count == 1;
+	}
+
+	@Override
+	public void run(String[] args) throws Exception {
+		run(new File(args[0]));
 	}
 }

@@ -36,12 +36,12 @@ public class Commands {
 
 
 	public static void merge(String mappingA, String mappingB, String mergedLocation) throws Exception {
-		new CommandMergeTinyV2().run(new String[] {mappingA, mappingB, mergedLocation});
+		new CommandMergeTinyV2().run(new String[]{mappingA, mappingB, mergedLocation});
 	}
 
 
 	public static void proposeFieldNames(String mergedJar, String mergedTinyFile, String newTinyFile) throws Exception {
-		new CommandProposeV2FieldNames().run(new String[] {mergedJar, mergedTinyFile, newTinyFile});
+		new CommandProposeV2FieldNames().run(new String[]{mergedJar, mergedTinyFile, newTinyFile});
 	}
 
 

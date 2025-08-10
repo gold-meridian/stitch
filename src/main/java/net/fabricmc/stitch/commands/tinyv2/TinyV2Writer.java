@@ -23,48 +23,30 @@ import java.nio.file.Path;
 import java.util.List;
 
 public class TinyV2Writer {
-	public static void write(TinyFile tinyFile, Path writeTo) throws IOException {
-		new TinyV2Writer().instanceWrite(tinyFile, writeTo);
-	}
-
-	private static class Prefixes {
-		private Prefixes() {
-		}
-
-		public static final String PARAMETER = "p";
-		public static final String METHOD = "m";
-		public static final String VARIABLE = "v";
-		public static final String HEADER = "tiny";
-		public static final String FIELD = "f";
-		public static final String COMMENT = "c";
-		public static final String CLASS = "c";
-	}
-
-	private static class Indents {
-		private Indents() {
-		}
-
-		public static final int HEADER = 0;
-		public static final int PROPERTY = 1;
-		public static final int CLASS = 0;
-		public static final int METHOD = 1;
-		public static final int FIELD = 1;
-		public static final int PARAMETER = 2;
-		public static final int LOCAL_VARIABLE = 2;
-
-		public static final int CLASS_COMMENT = 1;
-		public static final int METHOD_COMMENT = 2;
-		public static final int FIELD_COMMENT = 2;
-		public static final int PARAMETER_COMMENT = 3;
-		public static final int LOCAL_VARIABLE_COMMENT = 3;
-
-
-	}
+	private static final String TO_ESCAPE = "\\\n\r\0\t";
+	private static final String ESCAPED = "\\nr0t";
+	private BufferedWriter writer;
 
 	private TinyV2Writer() {
 	}
 
-	private BufferedWriter writer;
+	public static void write(TinyFile tinyFile, Path writeTo) throws IOException {
+		new TinyV2Writer().instanceWrite(tinyFile, writeTo);
+	}
+
+	private static String escapeComment(String old) {
+		StringBuilder sb = new StringBuilder(old.length());
+		for (int i = 0; i < old.length(); i++) {
+			char c = old.charAt(i);
+			int t = TO_ESCAPE.indexOf(c);
+			if (t == -1) {
+				sb.append(c);
+			} else {
+				sb.append('\\').append(ESCAPED.charAt(t));
+			}
+		}
+		return sb.toString();
+	}
 
 	private void instanceWrite(TinyFile tinyFile, Path writeTo) throws IOException {
 		try {
@@ -76,10 +58,9 @@ public class TinyV2Writer {
 		}
 	}
 
-
 	private void writeHeader(TinyHeader header) {
 		writeLine(Indents.HEADER, header.getNamespaces(), Prefixes.HEADER,
-						Integer.toString(header.getMajorVersion()), Integer.toString(header.getMinorVersion()));
+				Integer.toString(header.getMajorVersion()), Integer.toString(header.getMinorVersion()));
 		header.getProperties().forEach((key, value) -> writeLine(Indents.PROPERTY, value));
 	}
 
@@ -113,8 +94,8 @@ public class TinyV2Writer {
 
 	private void writeLocalVariable(TinyLocalVariable localVariable) {
 		writeLine(Indents.LOCAL_VARIABLE, localVariable.getLocalVariableNames(), Prefixes.VARIABLE,
-						Integer.toString(localVariable.getLvIndex()), Integer.toString(localVariable.getLvStartOffset()),
-						Integer.toString(localVariable.getLvTableIndex())
+				Integer.toString(localVariable.getLvIndex()), Integer.toString(localVariable.getLvStartOffset()),
+				Integer.toString(localVariable.getLvTableIndex())
 		);
 
 		for (String comment : localVariable.getComments()) {
@@ -127,28 +108,9 @@ public class TinyV2Writer {
 		for (String comment : field.getComments()) writeComment(Indents.FIELD_COMMENT, comment);
 	}
 
-
 	private void writeComment(int indentLevel, String comment) {
 		writeLine(indentLevel, Prefixes.COMMENT, escapeComment(comment));
 	}
-
-	private static String escapeComment(String old) {
-		StringBuilder sb = new StringBuilder(old.length());
-		for (int i = 0; i < old.length(); i++) {
-			char c = old.charAt(i);
-			int t = TO_ESCAPE.indexOf(c);
-			if (t == -1) {
-				sb.append(c);
-			} else {
-				sb.append('\\').append(ESCAPED.charAt(t));
-			}
-		}
-		return sb.toString();
-	}
-
-	private static final String TO_ESCAPE = "\\\n\r\0\t";
-	private static final String ESCAPED = "\\nr0t";
-
 
 	private void write(int indentLevel, String... tabSeparatedStrings) {
 		try {
@@ -187,5 +149,36 @@ public class TinyV2Writer {
 	private void writeLine(int indentLevel, String... tabSeparatedStrings) {
 		write(indentLevel, tabSeparatedStrings);
 		writeLine();
+	}
+
+	private static class Prefixes {
+		public static final String PARAMETER = "p";
+		public static final String METHOD = "m";
+		public static final String VARIABLE = "v";
+		public static final String HEADER = "tiny";
+		public static final String FIELD = "f";
+		public static final String COMMENT = "c";
+		public static final String CLASS = "c";
+		private Prefixes() {
+		}
+	}
+
+	private static class Indents {
+		public static final int HEADER = 0;
+		public static final int PROPERTY = 1;
+		public static final int CLASS = 0;
+		public static final int METHOD = 1;
+		public static final int FIELD = 1;
+		public static final int PARAMETER = 2;
+		public static final int LOCAL_VARIABLE = 2;
+		public static final int CLASS_COMMENT = 1;
+		public static final int METHOD_COMMENT = 2;
+		public static final int FIELD_COMMENT = 2;
+		public static final int PARAMETER_COMMENT = 3;
+		public static final int LOCAL_VARIABLE_COMMENT = 3;
+		private Indents() {
+		}
+
+
 	}
 }

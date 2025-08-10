@@ -16,11 +16,11 @@
 
 package net.fabricmc.stitch.commands;
 
-import net.fabricmc.stitch.Command;
-import net.fabricmc.stitch.util.RecordValidator;
-
 import java.io.File;
 import java.io.FileNotFoundException;
+
+import net.fabricmc.stitch.Command;
+import net.fabricmc.stitch.util.RecordValidator;
 
 public class CommandValidateRecords extends Command {
 	public CommandValidateRecords() {

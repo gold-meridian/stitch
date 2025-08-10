@@ -33,20 +33,20 @@ import net.fabricmc.mapping.reader.v2.TinyV2Factory;
 import net.fabricmc.mapping.reader.v2.TinyVisitor;
 
 public class TinyV2Reader {
-	private static class Visitor implements TinyVisitor {
-		private enum CommentType {
-			CLASS,
-			FIELD,
-			METHOD,
-			PARAMETER,
-			LOCAL_VARIABLE
+	public static TinyFile read(Path readFrom) throws IOException {
+		Visitor visitor = new Visitor();
+		try (BufferedReader reader = Files.newBufferedReader(readFrom)) {
+			TinyV2Factory.visit(reader, visitor);
 		}
 
+		return visitor.getAST();
+	}
+
+	private static class Visitor implements TinyVisitor {
 		private TinyHeader header;
 		private int namespaceAmount;
 		//        private String
 		private Set<TinyClass> classes = new HashSet<>();
-
 		private TinyClass currentClass;
 		private TinyField currentField;
 		private TinyMethod currentMethod;
@@ -62,7 +62,7 @@ public class TinyV2Reader {
 		@Override
 		public void start(TinyMetadata metadata) {
 			header = new TinyHeader(new ArrayList<>(metadata.getNamespaces()), metadata.getMajorVersion(), metadata.getMinorVersion(),
-							metadata.getProperties());
+					metadata.getProperties());
 			namespaceAmount = header.getNamespaces().size();
 		}
 
@@ -83,7 +83,7 @@ public class TinyV2Reader {
 		@Override
 		public void pushMethod(MappingGetter name, String descriptor) {
 			currentMethod = new TinyMethod(
-							descriptor, getNames(name), new HashSet<>(), new HashSet<>(), new ArrayList<>()
+					descriptor, getNames(name), new HashSet<>(), new HashSet<>(), new ArrayList<>()
 			);
 			currentClass.getMethods().add(currentMethod);
 			currentCommentType = CommentType.METHOD;
@@ -92,7 +92,7 @@ public class TinyV2Reader {
 		@Override
 		public void pushParameter(MappingGetter name, int localVariableIndex) {
 			currentParameter = new TinyMethodParameter(
-							localVariableIndex, getNames(name), new ArrayList<>()
+					localVariableIndex, getNames(name), new ArrayList<>()
 			);
 			currentMethod.getParameters().add(currentParameter);
 			currentCommentType = CommentType.PARAMETER;
@@ -101,7 +101,7 @@ public class TinyV2Reader {
 		@Override
 		public void pushLocalVariable(MappingGetter name, int localVariableIndex, int localVariableStartOffset, int localVariableTableIndex) {
 			currentLocalVariable = new TinyLocalVariable(
-							localVariableIndex, localVariableStartOffset, localVariableTableIndex, getNames(name), new ArrayList<>()
+					localVariableIndex, localVariableStartOffset, localVariableTableIndex, getNames(name), new ArrayList<>()
 			);
 			currentMethod.getLocalVariables().add(currentLocalVariable);
 			currentCommentType = CommentType.LOCAL_VARIABLE;
@@ -112,23 +112,23 @@ public class TinyV2Reader {
 			if (inComment)
 				throw new RuntimeException("commenting on comment");
 			switch (currentCommentType) {
-			case CLASS:
-				currentClass.getComments().add(comment);
-				break;
-			case FIELD:
-				currentField.getComments().add(comment);
-				break;
-			case METHOD:
-				currentMethod.getComments().add(comment);
-				break;
-			case PARAMETER:
-				currentParameter.getComments().add(comment);
-				break;
-			case LOCAL_VARIABLE:
-				currentLocalVariable.getComments().add(comment);
-				break;
-			default:
-				throw new RuntimeException("unexpected comment without parent");
+				case CLASS:
+					currentClass.getComments().add(comment);
+					break;
+				case FIELD:
+					currentField.getComments().add(comment);
+					break;
+				case METHOD:
+					currentMethod.getComments().add(comment);
+					break;
+				case PARAMETER:
+					currentParameter.getComments().add(comment);
+					break;
+				case LOCAL_VARIABLE:
+					currentLocalVariable.getComments().add(comment);
+					break;
+				default:
+					throw new RuntimeException("unexpected comment without parent");
 			}
 			inComment = true;
 		}
@@ -163,14 +163,13 @@ public class TinyV2Reader {
 		private TinyFile getAST() {
 			return new TinyFile(header, classes);
 		}
-	}
 
-	public static TinyFile read(Path readFrom) throws IOException {
-		Visitor visitor = new Visitor();
-		try (BufferedReader reader = Files.newBufferedReader(readFrom)) {
-			TinyV2Factory.visit(reader, visitor);
+		private enum CommentType {
+			CLASS,
+			FIELD,
+			METHOD,
+			PARAMETER,
+			LOCAL_VARIABLE
 		}
-
-		return visitor.getAST();
 	}
 }

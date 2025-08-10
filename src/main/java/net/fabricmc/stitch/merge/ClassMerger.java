@@ -16,210 +16,223 @@
 
 package net.fabricmc.stitch.merge;
 
-import net.fabricmc.stitch.util.StitchUtil;
-import org.objectweb.asm.*;
-import org.objectweb.asm.tree.*;
+import java.util.ArrayList;
+import java.util.LinkedHashMap;
+import java.util.List;
+import java.util.Locale;
+import java.util.Map;
 
-import java.util.*;
+import org.objectweb.asm.AnnotationVisitor;
+import org.objectweb.asm.ClassReader;
+import org.objectweb.asm.ClassVisitor;
+import org.objectweb.asm.ClassWriter;
+import org.objectweb.asm.Type;
+import org.objectweb.asm.tree.ClassNode;
+import org.objectweb.asm.tree.FieldNode;
+import org.objectweb.asm.tree.InnerClassNode;
+import org.objectweb.asm.tree.MethodNode;
+
+import net.fabricmc.stitch.util.StitchUtil;
 
 public class ClassMerger {
-    private static final String SIDE_DESCRIPTOR = "Lnet/fabricmc/api/EnvType;";
-    private static final String ITF_DESCRIPTOR = "Lnet/fabricmc/api/EnvironmentInterface;";
-    private static final String ITF_LIST_DESCRIPTOR = "Lnet/fabricmc/api/EnvironmentInterfaces;";
-    private static final String SIDED_DESCRIPTOR = "Lnet/fabricmc/api/Environment;";
+	private static final String SIDE_DESCRIPTOR = "Lnet/fabricmc/api/EnvType;";
+	private static final String ITF_DESCRIPTOR = "Lnet/fabricmc/api/EnvironmentInterface;";
+	private static final String ITF_LIST_DESCRIPTOR = "Lnet/fabricmc/api/EnvironmentInterfaces;";
+	private static final String SIDED_DESCRIPTOR = "Lnet/fabricmc/api/Environment;";
 
-    private abstract class Merger<T> {
-        private final Map<String, T> entriesClient, entriesServer;
-        private final List<String> entryNames;
+	public ClassMerger() {
 
-        public Merger(List<T> entriesClient, List<T> entriesServer) {
-            this.entriesClient = new LinkedHashMap<>();
-            this.entriesServer = new LinkedHashMap<>();
+	}
 
-            List<String> listClient = toMap(entriesClient, this.entriesClient);
-            List<String> listServer = toMap(entriesServer, this.entriesServer);
+	private static void visitSideAnnotation(AnnotationVisitor av, String side) {
+		av.visitEnum("value", SIDE_DESCRIPTOR, side.toUpperCase(Locale.ROOT));
+		av.visitEnd();
+	}
 
-            this.entryNames = StitchUtil.mergePreserveOrder(listClient, listServer);
-        }
+	private static void visitItfAnnotation(AnnotationVisitor av, String side, List<String> itfDescriptors) {
+		for (String itf : itfDescriptors) {
+			AnnotationVisitor avItf = av.visitAnnotation(null, ITF_DESCRIPTOR);
+			avItf.visitEnum("value", SIDE_DESCRIPTOR, side.toUpperCase(Locale.ROOT));
+			avItf.visit("itf", Type.getType("L" + itf + ";"));
+			avItf.visitEnd();
+		}
+	}
 
-        public abstract String getName(T entry);
-        public abstract void applySide(T entry, String side);
+	public byte[] merge(byte[] classClient, byte[] classServer) {
+		ClassReader readerC = new ClassReader(classClient);
+		ClassReader readerS = new ClassReader(classServer);
+		ClassWriter writer = new ClassWriter(0);
 
-        private final List<String> toMap(List<T> entries, Map<String, T> map) {
-            List<String> list = new ArrayList<>(entries.size());
-            for (T entry : entries) {
-                String name = getName(entry);
-                map.put(name, entry);
-                list.add(name);
-            }
-            return list;
-        }
+		ClassNode nodeC = new ClassNode(StitchUtil.ASM_VERSION);
+		readerC.accept(nodeC, 0);
 
-        public void merge(List<T> list) {
-            for (String s : entryNames) {
-                T entryClient = entriesClient.get(s);
-                T entryServer = entriesServer.get(s);
+		ClassNode nodeS = new ClassNode(StitchUtil.ASM_VERSION);
+		readerS.accept(nodeS, 0);
 
-                if (entryClient != null && entryServer != null) {
-                    list.add(entryClient);
-                } else if (entryClient != null) {
-                    applySide(entryClient, "CLIENT");
-                    list.add(entryClient);
-                } else {
-                    applySide(entryServer, "SERVER");
-                    list.add(entryServer);
-                }
-            }
-        }
-    }
+		ClassNode nodeOut = new ClassNode(StitchUtil.ASM_VERSION);
+		nodeOut.version = nodeC.version;
+		nodeOut.access = nodeC.access;
+		nodeOut.name = nodeC.name;
+		nodeOut.signature = nodeC.signature;
+		nodeOut.superName = nodeC.superName;
+		nodeOut.sourceFile = nodeC.sourceFile;
+		nodeOut.sourceDebug = nodeC.sourceDebug;
+		nodeOut.outerClass = nodeC.outerClass;
+		nodeOut.outerMethod = nodeC.outerMethod;
+		nodeOut.outerMethodDesc = nodeC.outerMethodDesc;
+		nodeOut.module = nodeC.module;
+		nodeOut.nestHostClass = nodeC.nestHostClass;
+		nodeOut.nestMembers = nodeC.nestMembers;
+		nodeOut.attrs = nodeC.attrs;
 
-    private static void visitSideAnnotation(AnnotationVisitor av, String side) {
-        av.visitEnum("value", SIDE_DESCRIPTOR, side.toUpperCase(Locale.ROOT));
-        av.visitEnd();
-    }
+		if (nodeC.invisibleAnnotations != null) {
+			nodeOut.invisibleAnnotations = new ArrayList<>();
+			nodeOut.invisibleAnnotations.addAll(nodeC.invisibleAnnotations);
+		}
+		if (nodeC.invisibleTypeAnnotations != null) {
+			nodeOut.invisibleTypeAnnotations = new ArrayList<>();
+			nodeOut.invisibleTypeAnnotations.addAll(nodeC.invisibleTypeAnnotations);
+		}
+		if (nodeC.visibleAnnotations != null) {
+			nodeOut.visibleAnnotations = new ArrayList<>();
+			nodeOut.visibleAnnotations.addAll(nodeC.visibleAnnotations);
+		}
+		if (nodeC.visibleTypeAnnotations != null) {
+			nodeOut.visibleTypeAnnotations = new ArrayList<>();
+			nodeOut.visibleTypeAnnotations.addAll(nodeC.visibleTypeAnnotations);
+		}
 
-    private static void visitItfAnnotation(AnnotationVisitor av, String side, List<String> itfDescriptors) {
-        for (String itf : itfDescriptors) {
-            AnnotationVisitor avItf = av.visitAnnotation(null, ITF_DESCRIPTOR);
-            avItf.visitEnum("value", SIDE_DESCRIPTOR, side.toUpperCase(Locale.ROOT));
-            avItf.visit("itf", Type.getType("L" + itf + ";"));
-            avItf.visitEnd();
-        }
-    }
+		List<String> itfs = StitchUtil.mergePreserveOrder(nodeC.interfaces, nodeS.interfaces);
+		nodeOut.interfaces = new ArrayList<>();
 
-    public static class SidedClassVisitor extends ClassVisitor {
-        private final String side;
+		List<String> clientItfs = new ArrayList<>();
+		List<String> serverItfs = new ArrayList<>();
 
-        public SidedClassVisitor(int api, ClassVisitor cv, String side) {
-            super(api, cv);
-            this.side = side;
-        }
+		for (String s : itfs) {
+			boolean nc = nodeC.interfaces.contains(s);
+			boolean ns = nodeS.interfaces.contains(s);
+			nodeOut.interfaces.add(s);
+			if (nc && !ns) {
+				clientItfs.add(s);
+			} else if (ns && !nc) {
+				serverItfs.add(s);
+			}
+		}
 
-        @Override
-        public void visitEnd() {
-            AnnotationVisitor av = cv.visitAnnotation(SIDED_DESCRIPTOR, true);
-            visitSideAnnotation(av, side);
-            super.visitEnd();
-        }
-    }
+		if (!clientItfs.isEmpty() || !serverItfs.isEmpty()) {
+			AnnotationVisitor envInterfaces = nodeOut.visitAnnotation(ITF_LIST_DESCRIPTOR, false);
+			AnnotationVisitor eiArray = envInterfaces.visitArray("value");
 
-    public ClassMerger() {
+			if (!clientItfs.isEmpty()) {
+				visitItfAnnotation(eiArray, "CLIENT", clientItfs);
+			}
+			if (!serverItfs.isEmpty()) {
+				visitItfAnnotation(eiArray, "SERVER", serverItfs);
+			}
+			eiArray.visitEnd();
+			envInterfaces.visitEnd();
+		}
 
-    }
+		new Merger<InnerClassNode>(nodeC.innerClasses, nodeS.innerClasses) {
+			@Override
+			public String getName(InnerClassNode entry) {
+				return entry.name;
+			}
 
-    public byte[] merge(byte[] classClient, byte[] classServer) {
-        ClassReader readerC = new ClassReader(classClient);
-        ClassReader readerS = new ClassReader(classServer);
-        ClassWriter writer = new ClassWriter(0);
+			@Override
+			public void applySide(InnerClassNode entry, String side) {
+			}
+		}.merge(nodeOut.innerClasses);
 
-        ClassNode nodeC = new ClassNode(StitchUtil.ASM_VERSION);
-        readerC.accept(nodeC, 0);
+		new Merger<FieldNode>(nodeC.fields, nodeS.fields) {
+			@Override
+			public String getName(FieldNode entry) {
+				return entry.name + ";;" + entry.desc;
+			}
 
-        ClassNode nodeS = new ClassNode(StitchUtil.ASM_VERSION);
-        readerS.accept(nodeS, 0);
+			@Override
+			public void applySide(FieldNode entry, String side) {
+				AnnotationVisitor av = entry.visitAnnotation(SIDED_DESCRIPTOR, false);
+				visitSideAnnotation(av, side);
+			}
+		}.merge(nodeOut.fields);
 
-        ClassNode nodeOut = new ClassNode(StitchUtil.ASM_VERSION);
-        nodeOut.version = nodeC.version;
-        nodeOut.access = nodeC.access;
-        nodeOut.name = nodeC.name;
-        nodeOut.signature = nodeC.signature;
-        nodeOut.superName = nodeC.superName;
-        nodeOut.sourceFile = nodeC.sourceFile;
-        nodeOut.sourceDebug = nodeC.sourceDebug;
-        nodeOut.outerClass = nodeC.outerClass;
-        nodeOut.outerMethod = nodeC.outerMethod;
-        nodeOut.outerMethodDesc = nodeC.outerMethodDesc;
-        nodeOut.module = nodeC.module;
-        nodeOut.nestHostClass = nodeC.nestHostClass;
-        nodeOut.nestMembers = nodeC.nestMembers;
-        nodeOut.attrs = nodeC.attrs;
+		new Merger<MethodNode>(nodeC.methods, nodeS.methods) {
+			@Override
+			public String getName(MethodNode entry) {
+				return entry.name + entry.desc;
+			}
 
-        if (nodeC.invisibleAnnotations != null) {
-            nodeOut.invisibleAnnotations = new ArrayList<>();
-            nodeOut.invisibleAnnotations.addAll(nodeC.invisibleAnnotations);
-        }
-        if (nodeC.invisibleTypeAnnotations != null) {
-            nodeOut.invisibleTypeAnnotations = new ArrayList<>();
-            nodeOut.invisibleTypeAnnotations.addAll(nodeC.invisibleTypeAnnotations);
-        }
-        if (nodeC.visibleAnnotations != null) {
-            nodeOut.visibleAnnotations = new ArrayList<>();
-            nodeOut.visibleAnnotations.addAll(nodeC.visibleAnnotations);
-        }
-        if (nodeC.visibleTypeAnnotations != null) {
-            nodeOut.visibleTypeAnnotations = new ArrayList<>();
-            nodeOut.visibleTypeAnnotations.addAll(nodeC.visibleTypeAnnotations);
-        }
+			@Override
+			public void applySide(MethodNode entry, String side) {
+				AnnotationVisitor av = entry.visitAnnotation(SIDED_DESCRIPTOR, false);
+				visitSideAnnotation(av, side);
+			}
+		}.merge(nodeOut.methods);
 
-        List<String> itfs = StitchUtil.mergePreserveOrder(nodeC.interfaces, nodeS.interfaces);
-        nodeOut.interfaces = new ArrayList<>();
+		nodeOut.accept(writer);
+		return writer.toByteArray();
+	}
 
-        List<String> clientItfs = new ArrayList<>();
-        List<String> serverItfs = new ArrayList<>();
+	public static class SidedClassVisitor extends ClassVisitor {
+		private final String side;
 
-        for (String s : itfs) {
-            boolean nc = nodeC.interfaces.contains(s);
-            boolean ns = nodeS.interfaces.contains(s);
-            nodeOut.interfaces.add(s);
-            if (nc && !ns) {
-                clientItfs.add(s);
-            } else if (ns && !nc) {
-                serverItfs.add(s);
-            }
-        }
+		public SidedClassVisitor(int api, ClassVisitor cv, String side) {
+			super(api, cv);
+			this.side = side;
+		}
 
-        if (!clientItfs.isEmpty() || !serverItfs.isEmpty()) {
-            AnnotationVisitor envInterfaces = nodeOut.visitAnnotation(ITF_LIST_DESCRIPTOR, false);
-            AnnotationVisitor eiArray = envInterfaces.visitArray("value");
+		@Override
+		public void visitEnd() {
+			AnnotationVisitor av = cv.visitAnnotation(SIDED_DESCRIPTOR, true);
+			visitSideAnnotation(av, side);
+			super.visitEnd();
+		}
+	}
 
-            if (!clientItfs.isEmpty()) {
-                visitItfAnnotation(eiArray, "CLIENT", clientItfs);
-            }
-            if (!serverItfs.isEmpty()) {
-                visitItfAnnotation(eiArray, "SERVER", serverItfs);
-            }
-            eiArray.visitEnd();
-            envInterfaces.visitEnd();
-        }
+	private abstract class Merger<T> {
+		private final Map<String, T> entriesClient, entriesServer;
+		private final List<String> entryNames;
 
-        new Merger<InnerClassNode>(nodeC.innerClasses, nodeS.innerClasses) {
-            @Override
-            public String getName(InnerClassNode entry) {
-                return entry.name;
-            }
+		public Merger(List<T> entriesClient, List<T> entriesServer) {
+			this.entriesClient = new LinkedHashMap<>();
+			this.entriesServer = new LinkedHashMap<>();
 
-            @Override
-            public void applySide(InnerClassNode entry, String side) {
-            }
-        }.merge(nodeOut.innerClasses);
+			List<String> listClient = toMap(entriesClient, this.entriesClient);
+			List<String> listServer = toMap(entriesServer, this.entriesServer);
 
-        new Merger<FieldNode>(nodeC.fields, nodeS.fields) {
-            @Override
-            public String getName(FieldNode entry) {
-                return entry.name + ";;" + entry.desc;
-            }
+			this.entryNames = StitchUtil.mergePreserveOrder(listClient, listServer);
+		}
 
-            @Override
-            public void applySide(FieldNode entry, String side) {
-                AnnotationVisitor av = entry.visitAnnotation(SIDED_DESCRIPTOR, false);
-                visitSideAnnotation(av, side);
-            }
-        }.merge(nodeOut.fields);
+		public abstract String getName(T entry);
 
-        new Merger<MethodNode>(nodeC.methods, nodeS.methods) {
-            @Override
-            public String getName(MethodNode entry) {
-                return entry.name + entry.desc;
-            }
+		public abstract void applySide(T entry, String side);
 
-            @Override
-            public void applySide(MethodNode entry, String side) {
-                AnnotationVisitor av = entry.visitAnnotation(SIDED_DESCRIPTOR, false);
-                visitSideAnnotation(av, side);
-            }
-        }.merge(nodeOut.methods);
+		private final List<String> toMap(List<T> entries, Map<String, T> map) {
+			List<String> list = new ArrayList<>(entries.size());
+			for (T entry : entries) {
+				String name = getName(entry);
+				map.put(name, entry);
+				list.add(name);
+			}
+			return list;
+		}
 
-        nodeOut.accept(writer);
-        return writer.toByteArray();
-    }
+		public void merge(List<T> list) {
+			for (String s : entryNames) {
+				T entryClient = entriesClient.get(s);
+				T entryServer = entriesServer.get(s);
+
+				if (entryClient != null && entryServer != null) {
+					list.add(entryClient);
+				} else if (entryClient != null) {
+					applySide(entryClient, "CLIENT");
+					list.add(entryClient);
+				} else {
+					applySide(entryServer, "SERVER");
+					list.add(entryServer);
+				}
+			}
+		}
+	}
 }

@@ -40,8 +40,8 @@ public class Stable1_14_4 {
 	@Test
 	public void testReorder2() throws Exception {
 		Commands.reorder(DIR + "intermediary-mappings.tinyv2",
-						DIR + "intermediary-mappings-inverted.tinyv2",
-						"intermediary", "official"
+				DIR + "intermediary-mappings-inverted.tinyv2",
+				"intermediary", "official"
 		);
 	}
 
@@ -50,14 +50,14 @@ public class Stable1_14_4 {
 	public void testMerge() throws Exception {
 		String target = DIR + "merged-unordered.tinyv2";
 		Commands.merge(DIR + "intermediary-mappings-inverted.tinyv2",
-						DIR + "yarn-mappings.tinyv2",
-						target
+				DIR + "yarn-mappings.tinyv2",
+				target
 		);
 		try (BufferedReader reader = Files.newBufferedReader(Paths.get(target))) {
 			TinyTree mappings = TinyMappingFactory.load(reader);
 
 			ParameterDef blockInitParam = findMethodParameterMapping("intermediary", "net/minecraft/class_2248",
-							"<init>", "(Lnet/minecraft/class_2248$class_2251;)V", 1, mappings);
+					"<init>", "(Lnet/minecraft/class_2248$class_2251;)V", 1, mappings);
 
 			Assertions.assertEquals("settings", blockInitParam.getName("named"));
 
@@ -67,12 +67,12 @@ public class Stable1_14_4 {
 
 	private ClassDef findClassMapping(String column, String key, TinyTree mappings) {
 		return find(mappings.getClasses(), c -> c.getName(column).equals(key))
-						.orElseThrow(() -> new AssertionError("Could not find key " + key + " in namespace " + column));
+				.orElseThrow(() -> new AssertionError("Could not find key " + key + " in namespace " + column));
 	}
 
 	private MethodDef findMethodMapping(String column, String className, String methodName, String descriptor, TinyTree mappings) {
 		return find(findClassMapping(column, className, mappings).getMethods(),
-						m -> m.getName(column).equals(methodName) && m.getDescriptor(column).equals(descriptor)
+				m -> m.getName(column).equals(methodName) && m.getDescriptor(column).equals(descriptor)
 
 		).orElseThrow(() -> new AssertionError("Could not find key " + className + " " + descriptor + " " + methodName + " in namespace " + column));
 	}
@@ -82,8 +82,8 @@ public class Stable1_14_4 {
 													int lvIndex, TinyTree mappings) {
 		MethodDef method = findMethodMapping(column, className, methodName, descriptor, mappings);
 		return find(method.getParameters(),
-						p -> p.getLocalVariableIndex() == lvIndex)
-						.orElseThrow(() -> new AssertionError("Could not find key" + className + " " + descriptor + " " + methodName + " " + lvIndex + " in namespace " + column));
+				p -> p.getLocalVariableIndex() == lvIndex)
+				.orElseThrow(() -> new AssertionError("Could not find key" + className + " " + descriptor + " " + methodName + " " + lvIndex + " in namespace " + column));
 	}
 
 	private <T> Optional<T> find(Collection<T> list, Predicate<T> predicate) {
@@ -95,8 +95,8 @@ public class Stable1_14_4 {
 	@Disabled
 	public void testReorder3() throws Exception {
 		Commands.reorder(DIR + "merged-unordered.tinyv2",
-						DIR + "merged.tinyv2",
-						"official", "intermediary", "named"
+				DIR + "merged.tinyv2",
+				"official", "intermediary", "named"
 		);
 	}
 
@@ -104,7 +104,7 @@ public class Stable1_14_4 {
 	@Disabled
 	public void testFieldNameProposal() throws Exception {
 		Commands.proposeFieldNames("local/1.14.4-merged.jar",
-						DIR + "merged.tinyv2", DIR + "merged-proposed.tinyv2");
+				DIR + "merged.tinyv2", DIR + "merged-proposed.tinyv2");
 	}
 
 	// Requirements:

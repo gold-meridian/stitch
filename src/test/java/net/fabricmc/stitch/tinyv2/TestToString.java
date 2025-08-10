@@ -31,11 +31,11 @@ public class TestToString {
 	@Test
 	public void testTinyClassToString() {
 		TinyClass tinyClass = new TinyClass(
-						Arrays.asList("name1", "name2", "name3"),
-						Collections.singletonList(new TinyMethod("",
-										Collections.emptyList(), Collections.emptyList(), Collections.emptyList(), Collections.emptyList())),
-						Collections.singletonList(new TinyField("", Collections.emptyList(), Collections.emptyList())),
-						Collections.singletonList("Asdf")
+				Arrays.asList("name1", "name2", "name3"),
+				Collections.singletonList(new TinyMethod("",
+						Collections.emptyList(), Collections.emptyList(), Collections.emptyList(), Collections.emptyList())),
+				Collections.singletonList(new TinyField("", Collections.emptyList(), Collections.emptyList())),
+				Collections.singletonList("Asdf")
 		);
 
 		String expected = "TinyClass(names = [name1, name2, name3], 1 methods, 1 fields, 1 comments)";

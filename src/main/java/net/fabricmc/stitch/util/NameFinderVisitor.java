@@ -16,22 +16,22 @@
 
 package net.fabricmc.stitch.util;
 
-import org.objectweb.asm.ClassVisitor;
-import org.objectweb.asm.FieldVisitor;
-import org.objectweb.asm.MethodVisitor;
-import org.objectweb.asm.Opcodes;
-import org.objectweb.asm.tree.MethodNode;
-
 import java.util.ArrayList;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
 
+import org.objectweb.asm.ClassVisitor;
+import org.objectweb.asm.FieldVisitor;
+import org.objectweb.asm.MethodVisitor;
+import org.objectweb.asm.Opcodes;
+import org.objectweb.asm.tree.MethodNode;
+
 public class NameFinderVisitor extends ClassVisitor {
-	private String owner;
 	private final Map<String, Set<String>> allEnumFields;
 	private final Map<String, List<MethodNode>> allMethods;
+	private String owner;
 
 	public NameFinderVisitor(int api, Map<String, Set<String>> allEnumFields, Map<String, List<MethodNode>> allMethods) {
 		super(api);

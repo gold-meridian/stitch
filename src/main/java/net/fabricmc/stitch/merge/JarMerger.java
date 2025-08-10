@@ -16,211 +16,222 @@
 
 package net.fabricmc.stitch.merge;
 
-import net.fabricmc.stitch.util.SnowmanClassVisitor;
-import net.fabricmc.stitch.util.StitchUtil;
-import net.fabricmc.stitch.util.SyntheticParameterClassVisitor;
-import org.objectweb.asm.ClassReader;
-import org.objectweb.asm.ClassVisitor;
-import org.objectweb.asm.ClassWriter;
-
-import java.io.*;
+import java.io.File;
+import java.io.IOException;
 import java.nio.charset.Charset;
-import java.nio.file.*;
+import java.nio.file.FileVisitResult;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.nio.file.SimpleFileVisitor;
+import java.nio.file.StandardOpenOption;
 import java.nio.file.attribute.BasicFileAttributeView;
 import java.nio.file.attribute.BasicFileAttributes;
-import java.util.*;
+import java.util.Arrays;
+import java.util.HashMap;
+import java.util.List;
+import java.util.Map;
+import java.util.Objects;
+import java.util.Set;
+import java.util.TreeSet;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
 import java.util.stream.Collectors;
 
+import org.objectweb.asm.ClassReader;
+import org.objectweb.asm.ClassVisitor;
+import org.objectweb.asm.ClassWriter;
+
+import net.fabricmc.stitch.util.SnowmanClassVisitor;
+import net.fabricmc.stitch.util.StitchUtil;
+import net.fabricmc.stitch.util.SyntheticParameterClassVisitor;
+
 public class JarMerger implements AutoCloseable {
-    public class Entry {
-        public final Path path;
-        public final BasicFileAttributes metadata;
-        public final byte[] data;
+	private static final ClassMerger CLASS_MERGER = new ClassMerger();
+	private final StitchUtil.FileSystemDelegate inputClientFs, inputServerFs, outputFs;
+	private final Path inputClient, inputServer;
+	private final Map<String, Entry> entriesClient, entriesServer;
+	private final Set<String> entriesAll;
+	private boolean removeSnowmen = false;
+	private boolean offsetSyntheticsParams = false;
+	public JarMerger(File inputClient, File inputServer, File output) throws IOException {
+		if (output.exists()) {
+			if (!output.delete()) {
+				throw new IOException("Could not delete " + output.getName());
+			}
+		}
 
-        public Entry(Path path, BasicFileAttributes metadata, byte[] data) {
-            this.path = path;
-            this.metadata = metadata;
-            this.data = data;
-        }
-    }
+		this.inputClient = (inputClientFs = StitchUtil.getJarFileSystem(inputClient, false)).get().getPath("/");
+		this.inputServer = (inputServerFs = StitchUtil.getJarFileSystem(inputServer, false)).get().getPath("/");
+		this.outputFs = StitchUtil.getJarFileSystem(output, true);
 
-    private static final ClassMerger CLASS_MERGER = new ClassMerger();
-    private final StitchUtil.FileSystemDelegate inputClientFs, inputServerFs, outputFs;
-    private final Path inputClient, inputServer;
-    private final Map<String, Entry> entriesClient, entriesServer;
-    private final Set<String> entriesAll;
-    private boolean removeSnowmen = false;
-    private boolean offsetSyntheticsParams = false;
+		this.entriesClient = new HashMap<>();
+		this.entriesServer = new HashMap<>();
+		this.entriesAll = new TreeSet<>();
+	}
 
-    public JarMerger(File inputClient, File inputServer, File output) throws IOException {
-        if (output.exists()) {
-            if (!output.delete()) {
-                throw new IOException("Could not delete " + output.getName());
-            }
-        }
+	public void enableSnowmanRemoval() {
+		removeSnowmen = true;
+	}
 
-        this.inputClient = (inputClientFs = StitchUtil.getJarFileSystem(inputClient, false)).get().getPath("/");
-        this.inputServer = (inputServerFs = StitchUtil.getJarFileSystem(inputServer, false)).get().getPath("/");
-        this.outputFs = StitchUtil.getJarFileSystem(output, true);
+	public void enableSyntheticParamsOffset() {
+		offsetSyntheticsParams = true;
+	}
 
-        this.entriesClient = new HashMap<>();
-        this.entriesServer = new HashMap<>();
-        this.entriesAll = new TreeSet<>();
-    }
+	@Override
+	public void close() throws IOException {
+		inputClientFs.close();
+		inputServerFs.close();
+		outputFs.close();
+	}
 
-    public void enableSnowmanRemoval() {
-        removeSnowmen = true;
-    }
+	private void readToMap(Map<String, Entry> map, Path input, boolean isServer) {
+		try {
+			Files.walkFileTree(input, new SimpleFileVisitor<Path>() {
+				@Override
+				public FileVisitResult visitFile(Path path, BasicFileAttributes attr) throws IOException {
+					if (attr.isDirectory()) {
+						return FileVisitResult.CONTINUE;
+					}
 
-    public void enableSyntheticParamsOffset() {
-        offsetSyntheticsParams = true;
-    }
+					if (!path.getFileName().toString().endsWith(".class")) {
+						if (path.toString().equals("/META-INF/MANIFEST.MF")) {
+							map.put("META-INF/MANIFEST.MF", new Entry(path, attr,
+									"Manifest-Version: 1.0\nMain-Class: net.minecraft.client.Main\n".getBytes(Charset.forName("UTF-8"))));
+						} else {
+							if (path.toString().startsWith("/META-INF/")) {
+								if (path.toString().endsWith(".SF") || path.toString().endsWith(".RSA")) {
+									return FileVisitResult.CONTINUE;
+								}
+							}
 
-    @Override
-    public void close() throws IOException {
-        inputClientFs.close();
-        inputServerFs.close();
-        outputFs.close();
-    }
+							map.put(path.toString().substring(1), new Entry(path, attr, null));
+						}
 
-    private void readToMap(Map<String, Entry> map, Path input, boolean isServer) {
-        try {
-            Files.walkFileTree(input, new SimpleFileVisitor<Path>() {
-                @Override
-                public FileVisitResult visitFile(Path path, BasicFileAttributes attr) throws IOException {
-                    if (attr.isDirectory()) {
-                        return FileVisitResult.CONTINUE;
-                    }
+						return FileVisitResult.CONTINUE;
+					}
 
-                    if (!path.getFileName().toString().endsWith(".class")) {
-                        if (path.toString().equals("/META-INF/MANIFEST.MF")) {
-                            map.put("META-INF/MANIFEST.MF", new Entry(path, attr,
-                                    "Manifest-Version: 1.0\nMain-Class: net.minecraft.client.Main\n".getBytes(Charset.forName("UTF-8"))));
-                        } else {
-                            if (path.toString().startsWith("/META-INF/")) {
-                                if (path.toString().endsWith(".SF") || path.toString().endsWith(".RSA")) {
-                                    return FileVisitResult.CONTINUE;
-                                }
-                            }
+					byte[] output = Files.readAllBytes(path);
+					map.put(path.toString().substring(1), new Entry(path, attr, output));
+					return FileVisitResult.CONTINUE;
+				}
+			});
+		} catch (IOException e) {
+			e.printStackTrace();
+		}
+	}
 
-                            map.put(path.toString().substring(1), new Entry(path, attr, null));
-                        }
-                        
-                        return FileVisitResult.CONTINUE;
-                    }
+	private void add(Entry entry) throws IOException {
+		Path outPath = outputFs.get().getPath(entry.path.toString());
+		if (outPath.getParent() != null) {
+			Files.createDirectories(outPath.getParent());
+		}
 
-                    byte[] output = Files.readAllBytes(path);
-                    map.put(path.toString().substring(1), new Entry(path, attr, output));
-                    return FileVisitResult.CONTINUE;
-                }
-            });
-        } catch (IOException e) {
-            e.printStackTrace();
-        }
-    }
+		if (entry.data != null) {
+			Files.write(outPath, entry.data, StandardOpenOption.CREATE_NEW);
+		} else {
+			Files.copy(entry.path, outPath);
+		}
 
-    private void add(Entry entry) throws IOException {
-        Path outPath = outputFs.get().getPath(entry.path.toString());
-        if (outPath.getParent() != null) {
-            Files.createDirectories(outPath.getParent());
-        }
+		Files.getFileAttributeView(outPath, BasicFileAttributeView.class)
+				.setTimes(
+						entry.metadata.creationTime(),
+						entry.metadata.lastAccessTime(),
+						entry.metadata.lastModifiedTime()
+				);
+	}
 
-        if (entry.data != null) {
-            Files.write(outPath, entry.data, StandardOpenOption.CREATE_NEW);
-        } else {
-            Files.copy(entry.path, outPath);
-        }
+	public void merge() throws IOException {
+		ExecutorService service = Executors.newFixedThreadPool(2);
+		service.submit(() -> readToMap(entriesClient, inputClient, false));
+		service.submit(() -> readToMap(entriesServer, inputServer, true));
+		service.shutdown();
+		try {
+			service.awaitTermination(1, TimeUnit.HOURS);
+		} catch (InterruptedException e) {
+			e.printStackTrace();
+		}
 
-        Files.getFileAttributeView(outPath, BasicFileAttributeView.class)
-                .setTimes(
-                        entry.metadata.creationTime(),
-                        entry.metadata.lastAccessTime(),
-                        entry.metadata.lastModifiedTime()
-                );
-    }
+		entriesAll.addAll(entriesClient.keySet());
+		entriesAll.addAll(entriesServer.keySet());
 
-    public void merge() throws IOException {
-        ExecutorService service = Executors.newFixedThreadPool(2);
-        service.submit(() -> readToMap(entriesClient, inputClient, false));
-        service.submit(() -> readToMap(entriesServer, inputServer, true));
-        service.shutdown();
-        try {
-            service.awaitTermination(1, TimeUnit.HOURS);
-        } catch (InterruptedException e) {
-            e.printStackTrace();
-        }
+		List<Entry> entries = entriesAll.parallelStream().map((entry) -> {
+			boolean isClass = entry.endsWith(".class");
+			boolean isMinecraft = entriesClient.containsKey(entry) || entry.startsWith("net/minecraft") || !entry.contains("/");
+			Entry result;
+			String side = null;
 
-        entriesAll.addAll(entriesClient.keySet());
-        entriesAll.addAll(entriesServer.keySet());
+			Entry entry1 = entriesClient.get(entry);
+			Entry entry2 = entriesServer.get(entry);
 
-        List<Entry> entries = entriesAll.parallelStream().map((entry) -> {
-            boolean isClass = entry.endsWith(".class");
-            boolean isMinecraft = entriesClient.containsKey(entry) || entry.startsWith("net/minecraft") || !entry.contains("/");
-            Entry result;
-            String side = null;
+			if (entry1 != null && entry2 != null) {
+				if (Arrays.equals(entry1.data, entry2.data)) {
+					result = entry1;
+				} else {
+					if (isClass) {
+						result = new Entry(entry1.path, entry1.metadata, CLASS_MERGER.merge(entry1.data, entry2.data));
+					} else {
+						// FIXME: More heuristics?
+						result = entry1;
+					}
+				}
+			} else if ((result = entry1) != null) {
+				side = "CLIENT";
+			} else if ((result = entry2) != null) {
+				side = "SERVER";
+			}
 
-            Entry entry1 = entriesClient.get(entry);
-            Entry entry2 = entriesServer.get(entry);
+			if (isClass && !isMinecraft && "SERVER".equals(side)) {
+				// Server bundles libraries, client doesn't - skip them
+				return null;
+			}
 
-            if (entry1 != null && entry2 != null) {
-                if (Arrays.equals(entry1.data, entry2.data)) {
-                    result = entry1;
-                } else {
-                    if (isClass) {
-                        result = new Entry(entry1.path, entry1.metadata, CLASS_MERGER.merge(entry1.data, entry2.data));
-                    } else {
-                        // FIXME: More heuristics?
-                        result = entry1;
-                    }
-                }
-            } else if ((result = entry1) != null) {
-                side = "CLIENT";
-            } else if ((result = entry2) != null) {
-                side = "SERVER";
-            }
+			if (result != null) {
+				if (isMinecraft && isClass) {
+					byte[] data = result.data;
+					ClassReader reader = new ClassReader(data);
+					ClassWriter writer = new ClassWriter(0);
+					ClassVisitor visitor = writer;
 
-            if (isClass && !isMinecraft && "SERVER".equals(side)) {
-                // Server bundles libraries, client doesn't - skip them
-                return null;
-            }
+					if (side != null) {
+						visitor = new ClassMerger.SidedClassVisitor(StitchUtil.ASM_VERSION, visitor, side);
+					}
 
-            if (result != null) {
-                if (isMinecraft && isClass) {
-                    byte[] data = result.data;
-                    ClassReader reader = new ClassReader(data);
-                    ClassWriter writer = new ClassWriter(0);
-                    ClassVisitor visitor = writer;
+					if (removeSnowmen) {
+						visitor = new SnowmanClassVisitor(StitchUtil.ASM_VERSION, visitor);
+					}
 
-                    if (side != null) {
-                        visitor = new ClassMerger.SidedClassVisitor(StitchUtil.ASM_VERSION, visitor, side);
-                    }
+					if (offsetSyntheticsParams) {
+						visitor = new SyntheticParameterClassVisitor(StitchUtil.ASM_VERSION, visitor);
+					}
 
-                    if (removeSnowmen) {
-                        visitor = new SnowmanClassVisitor(StitchUtil.ASM_VERSION, visitor);
-                    }
+					if (visitor != writer) {
+						reader.accept(visitor, 0);
+						data = writer.toByteArray();
+						result = new Entry(result.path, result.metadata, data);
+					}
+				}
 
-                    if (offsetSyntheticsParams) {
-                        visitor = new SyntheticParameterClassVisitor(StitchUtil.ASM_VERSION, visitor);
-                    }
+				return result;
+			} else {
+				return null;
+			}
+		}).filter(Objects::nonNull).collect(Collectors.toList());
 
-                    if (visitor != writer) {
-                        reader.accept(visitor, 0);
-                        data = writer.toByteArray();
-                        result = new Entry(result.path, result.metadata, data);
-                    }
-                }
+		for (Entry e : entries) {
+			add(e);
+		}
+	}
 
-                return result;
-            } else {
-                return null;
-            }
-        }).filter(Objects::nonNull).collect(Collectors.toList());
+	public class Entry {
+		public final Path path;
+		public final BasicFileAttributes metadata;
+		public final byte[] data;
 
-        for (Entry e : entries) {
-            add(e);
-        }
-    }
+		public Entry(Path path, BasicFileAttributes metadata, byte[] data) {
+			this.path = path;
+			this.metadata = metadata;
+			this.data = data;
+		}
+	}
 }

@@ -24,13 +24,13 @@ import java.util.HashMap;
 import java.util.Map;
 import java.util.stream.Collectors;
 
+import javax.annotation.Nullable;
+
 import com.google.common.collect.Lists;
 
 import net.fabricmc.mappings.EntryTriple;
 import net.fabricmc.stitch.Command;
 import net.fabricmc.stitch.util.FieldNameFinder;
-
-import javax.annotation.Nullable;
 
 /**
  * Java stores the names of enums in the bytecode, and obfuscation doesn't get rid of it. We can use this for easy mappings.
@@ -60,8 +60,8 @@ public class CommandProposeV2FieldNames extends Command {
 
 	private Map<EntryTriple, TinyField> generatedNamesOfClass(TinyClass tinyClass) {
 		return tinyClass.getFields().stream().collect(Collectors.toMap(
-						(TinyField field) -> new EntryTriple(tinyClass.getClassNames().get(0), field.getFieldNames().get(0), field.getFieldDescriptorInFirstNamespace())
-						, field -> field));
+				(TinyField field) -> new EntryTriple(tinyClass.getClassNames().get(0), field.getFieldNames().get(0), field.getFieldDescriptorInFirstNamespace())
+				, field -> field));
 	}
 
 	@Override
@@ -72,10 +72,10 @@ public class CommandProposeV2FieldNames extends Command {
 		Boolean shouldReplace = parseBooleanOrNull(args[3]);
 
 		// Validation
-		if(!inputJar.exists()) throw new IllegalArgumentException("Cannot find input jar at " + inputJar);
-		if(!Files.exists(inputMappings)) throw new IllegalArgumentException("Cannot find input mappings at " + inputMappings);
-		if(Files.exists(outputMappings)) System.out.println("Warning: existing file will be replaced by output mappings");
-		if(shouldReplace == null) throw new IllegalArgumentException("<should replace> must be 'true' or 'false'");
+		if (!inputJar.exists()) throw new IllegalArgumentException("Cannot find input jar at " + inputJar);
+		if (!Files.exists(inputMappings)) throw new IllegalArgumentException("Cannot find input mappings at " + inputMappings);
+		if (Files.exists(outputMappings)) System.out.println("Warning: existing file will be replaced by output mappings");
+		if (shouldReplace == null) throw new IllegalArgumentException("<should replace> must be 'true' or 'false'");
 
 		// entrytriple from the input jar namespace
 		Map<EntryTriple, String> generatedFieldNames = new FieldNameFinder().findNames(new File(args[0]));

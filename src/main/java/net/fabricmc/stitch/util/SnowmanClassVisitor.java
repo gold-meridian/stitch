@@ -21,6 +21,26 @@ import org.objectweb.asm.Label;
 import org.objectweb.asm.MethodVisitor;
 
 public class SnowmanClassVisitor extends ClassVisitor {
+	public SnowmanClassVisitor(int api, ClassVisitor cv) {
+		super(api, cv);
+	}
+
+	@Override
+	public void visitSource(final String source, final String debug) {
+		// Don't trust the obfuscation on this.
+		super.visitSource(null, null);
+	}
+
+	@Override
+	public MethodVisitor visitMethod(
+			final int access,
+			final String name,
+			final String descriptor,
+			final String signature,
+			final String[] exceptions) {
+		return new SnowmanMethodVisitor(api, super.visitMethod(access, name, descriptor, signature, exceptions));
+	}
+
 	public static class SnowmanMethodVisitor extends MethodVisitor {
 		public SnowmanMethodVisitor(int api, MethodVisitor methodVisitor) {
 			super(api, methodVisitor);
@@ -49,25 +69,5 @@ public class SnowmanClassVisitor extends ClassVisitor {
 			}
 			super.visitLocalVariable(newName, descriptor, signature, start, end, index);
 		}
-	}
-
-	public SnowmanClassVisitor(int api, ClassVisitor cv) {
-		super(api, cv);
-	}
-
-	@Override
-	public void visitSource(final String source, final String debug) {
-		// Don't trust the obfuscation on this.
-		super.visitSource(null, null);
-	}
-
-	@Override
-	public MethodVisitor visitMethod(
-			final int access,
-			final String name,
-			final String descriptor,
-			final String signature,
-			final String[] exceptions) {
-		return new SnowmanMethodVisitor(api, super.visitMethod(access, name, descriptor, signature, exceptions));
 	}
 }

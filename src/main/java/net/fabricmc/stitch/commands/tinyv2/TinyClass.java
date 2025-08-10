@@ -25,17 +25,10 @@ import java.util.stream.Collectors;
 import net.fabricmc.stitch.util.Pair;
 
 public class TinyClass implements Comparable<TinyClass>, Mapping {
-	@Override
-	public String toString() {
-		return "TinyClass(names = [" + String.join(", ", classNames) + "], " + methods.size() + " methods, "
-						+ fields.size() + " fields, " + comments.size() + " comments)";
-	}
-
 	private final List<String> classNames;
 	private final Collection<TinyMethod> methods;
 	private final Collection<TinyField> fields;
 	private final Collection<String> comments;
-
 	public TinyClass(List<String> classNames, Collection<TinyMethod> methods, Collection<TinyField> fields, Collection<String> comments) {
 		this.classNames = classNames;
 		this.methods = methods;
@@ -50,6 +43,11 @@ public class TinyClass implements Comparable<TinyClass>, Mapping {
 		this.comments = new ArrayList<>();
 	}
 
+	@Override
+	public String toString() {
+		return "TinyClass(names = [" + String.join(", ", classNames) + "], " + methods.size() + " methods, "
+				+ fields.size() + " fields, " + comments.size() + " comments)";
+	}
 
 	/**
 	 * Descriptors are also taken into account because methods can overload.

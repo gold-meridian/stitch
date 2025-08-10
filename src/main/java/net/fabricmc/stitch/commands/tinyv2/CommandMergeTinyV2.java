@@ -19,7 +19,17 @@ package net.fabricmc.stitch.commands.tinyv2;
 import java.io.IOException;
 import java.nio.file.Path;
 import java.nio.file.Paths;
-import java.util.*;
+import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.Collection;
+import java.util.Collections;
+import java.util.HashSet;
+import java.util.LinkedHashSet;
+import java.util.List;
+import java.util.Locale;
+import java.util.Map;
+import java.util.Objects;
+import java.util.Set;
 import java.util.function.Function;
 import java.util.regex.Pattern;
 import java.util.stream.Collectors;
@@ -66,8 +76,32 @@ import net.fabricmc.stitch.util.Pair;
  * This is a convenient way of storing all the mappings in Loom.
  */
 public class CommandMergeTinyV2 extends Command {
+	private static final TinyClass EMPTY_CLASS = new TinyClass(Collections.emptyList());
+	private static final TinyMethod EMPTY_METHOD = new TinyMethod(null, Collections.emptyList(), Collections.emptyList(), Collections.emptyList(), Collections.emptyList());
+
 	public CommandMergeTinyV2() {
 		super("mergeTinyV2");
+	}
+
+	private static <T> List<T> union(Stream<T> list1, Stream<T> list2) {
+		return union(list1.collect(Collectors.toList()), list2.collect(Collectors.toList()));
+	}
+
+	private static <T> List<T> union(Collection<T> list1, Collection<T> list2) {
+		Set<T> set = new HashSet<T>();
+
+		set.addAll(list1);
+		set.addAll(list2);
+
+		return new ArrayList<T>(set);
+	}
+
+	private static String escape(String str) {
+		return Pattern.quote(str);
+	}
+
+	private static <S, E> List<E> map(List<S> from, Function<S, E> mapper) {
+		return from.stream().map(mapper).collect(Collectors.toList());
 	}
 
 	/**
@@ -112,26 +146,6 @@ public class CommandMergeTinyV2 extends Command {
 
 		TinyV2Writer.write(mergedFile, Paths.get(args[2]));
 		System.out.println("Merged mappings written to " + Paths.get(args[2]));
-	}
-
-	private static class MergeContext {
-		public String commonNamespace;
-		public int commonNamespaceA;
-		public int commonNamespaceB;
-		public boolean leaveHoles;
-		public Set<String> newNamespaces;
-		public Map<String, Integer> namespaceMapA;
-		public Map<String, Integer> namespaceMapB;
-
-		public MergeContext(String commonNamespace, int commonNamespaceA, int commonNamespaceB, boolean leaveHoles, Set<String> newNamespaces, Map<String, Integer> namespaceMapA, Map<String, Integer> namespaceMapB) {
-			this.commonNamespace = commonNamespace;
-			this.commonNamespaceA = commonNamespaceA;
-			this.commonNamespaceB = commonNamespaceB;
-			this.leaveHoles = leaveHoles;
-			this.newNamespaces = newNamespaces;
-			this.namespaceMapA = namespaceMapA;
-			this.namespaceMapB = namespaceMapB;
-		}
 	}
 
 	private TinyFile merge(TinyFile inputA, TinyFile inputB, @Nullable String commonNamespace, boolean leaveHoles) {
@@ -227,8 +241,6 @@ public class CommandMergeTinyV2 extends Command {
 		return sharedName;
 	}
 
-	private static final TinyClass EMPTY_CLASS = new TinyClass(Collections.emptyList());
-
 	private TinyClass mergeClasses(String sharedClassName, @Nullable TinyClass classA, @Nullable TinyClass classB, MergeContext mergeContext) {
 		List<String> mergedNames = mergeNames(sharedClassName, classA, classB, mergeContext);
 		if (classA == null) classA = EMPTY_CLASS;
@@ -248,9 +260,6 @@ public class CommandMergeTinyV2 extends Command {
 
 		return new TinyClass(mergedNames, mergedMethods, mergedFields, mergedComments);
 	}
-
-	private static final TinyMethod EMPTY_METHOD = new TinyMethod(null, Collections.emptyList(), Collections.emptyList(), Collections.emptyList(), Collections.emptyList());
-
 
 	private TinyMethod mergeMethods(String sharedMethodName, @Nullable TinyMethod methodA, @Nullable TinyMethod methodB, MergeContext mergeContext) {
 		List<String> mergedNames = mergeNames(sharedMethodName, methodA, methodB, mergeContext);
@@ -333,7 +342,6 @@ public class CommandMergeTinyV2 extends Command {
 		return tinyClass.getMethods().stream().map(m -> Pair.of(m.getMapping().get(namespace), m.getMethodDescriptorInFirstNamespace()));
 	}
 
-
 	private List<String> mergeNames(@Nullable String key, @Nullable Mapping mappingA, @Nullable Mapping mappingB, MergeContext mergeContext) {
 		List<String> merged = new ArrayList<>();
 
@@ -371,25 +379,24 @@ public class CommandMergeTinyV2 extends Command {
 		return merged;
 	}
 
-	private static <T> List<T> union(Stream<T> list1, Stream<T> list2) {
-		return union(list1.collect(Collectors.toList()), list2.collect(Collectors.toList()));
-	}
+	private static class MergeContext {
+		public String commonNamespace;
+		public int commonNamespaceA;
+		public int commonNamespaceB;
+		public boolean leaveHoles;
+		public Set<String> newNamespaces;
+		public Map<String, Integer> namespaceMapA;
+		public Map<String, Integer> namespaceMapB;
 
-	private static <T> List<T> union(Collection<T> list1, Collection<T> list2) {
-		Set<T> set = new HashSet<T>();
-
-		set.addAll(list1);
-		set.addAll(list2);
-
-		return new ArrayList<T>(set);
-	}
-
-	private static String escape(String str) {
-		return Pattern.quote(str);
-	}
-
-	private static <S, E> List<E> map(List<S> from, Function<S, E> mapper) {
-		return from.stream().map(mapper).collect(Collectors.toList());
+		public MergeContext(String commonNamespace, int commonNamespaceA, int commonNamespaceB, boolean leaveHoles, Set<String> newNamespaces, Map<String, Integer> namespaceMapA, Map<String, Integer> namespaceMapB) {
+			this.commonNamespace = commonNamespace;
+			this.commonNamespaceA = commonNamespaceA;
+			this.commonNamespaceB = commonNamespaceB;
+			this.leaveHoles = leaveHoles;
+			this.newNamespaces = newNamespaces;
+			this.namespaceMapA = namespaceMapA;
+			this.namespaceMapB = namespaceMapB;
+		}
 	}
 
 }

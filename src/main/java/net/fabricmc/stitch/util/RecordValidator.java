@@ -16,15 +16,6 @@
 
 package net.fabricmc.stitch.util;
 
-import org.objectweb.asm.ClassReader;
-import org.objectweb.asm.Opcodes;
-import org.objectweb.asm.tree.AbstractInsnNode;
-import org.objectweb.asm.tree.ClassNode;
-import org.objectweb.asm.tree.FieldNode;
-import org.objectweb.asm.tree.InvokeDynamicInsnNode;
-import org.objectweb.asm.tree.MethodNode;
-import org.objectweb.asm.tree.RecordComponentNode;
-
 import java.io.File;
 import java.io.IOException;
 import java.nio.file.FileVisitResult;
@@ -34,6 +25,15 @@ import java.nio.file.SimpleFileVisitor;
 import java.nio.file.attribute.BasicFileAttributes;
 import java.util.LinkedList;
 import java.util.List;
+
+import org.objectweb.asm.ClassReader;
+import org.objectweb.asm.Opcodes;
+import org.objectweb.asm.tree.AbstractInsnNode;
+import org.objectweb.asm.tree.ClassNode;
+import org.objectweb.asm.tree.FieldNode;
+import org.objectweb.asm.tree.InvokeDynamicInsnNode;
+import org.objectweb.asm.tree.MethodNode;
+import org.objectweb.asm.tree.RecordComponentNode;
 
 public class RecordValidator implements AutoCloseable {
 	private static final String[] REQUIRED_METHOD_SIGNATURES = new String[]{
@@ -90,7 +90,7 @@ public class RecordValidator implements AutoCloseable {
 			// Ensure that a matching method is present
 			boolean foundMethod = false;
 			for (MethodNode method : classNode.methods) {
-				if (method.name.equals(component.name) && method.desc.equals("()" +component.descriptor)) {
+				if (method.name.equals(component.name) && method.desc.equals("()" + component.descriptor)) {
 					foundMethod = true;
 					break;
 				}
@@ -175,10 +175,10 @@ public class RecordValidator implements AutoCloseable {
 			if (insnNode instanceof InvokeDynamicInsnNode) {
 				InvokeDynamicInsnNode invokeDynamic = (InvokeDynamicInsnNode) insnNode;
 				if (
-					!invokeDynamic.name.equals("toString") ||
-					!invokeDynamic.desc.equals(String.format("(L%s;)Ljava/lang/String;", classNode.name)) ||
-					!invokeDynamic.bsm.getName().equals("bootstrap") ||
-					!invokeDynamic.bsm.getOwner().equals("java/lang/runtime/ObjectMethods")
+						!invokeDynamic.name.equals("toString") ||
+								!invokeDynamic.desc.equals(String.format("(L%s;)Ljava/lang/String;", classNode.name)) ||
+								!invokeDynamic.bsm.getName().equals("bootstrap") ||
+								!invokeDynamic.bsm.getOwner().equals("java/lang/runtime/ObjectMethods")
 				) {
 					// Not what we are looking for
 					continue;
