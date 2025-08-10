@@ -29,6 +29,7 @@ public class TinyClass implements Comparable<TinyClass>, Mapping {
 	private final Collection<TinyMethod> methods;
 	private final Collection<TinyField> fields;
 	private final Collection<String> comments;
+
 	public TinyClass(List<String> classNames, Collection<TinyMethod> methods, Collection<TinyField> fields, Collection<String> comments) {
 		this.classNames = classNames;
 		this.methods = methods;

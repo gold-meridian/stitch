@@ -39,6 +39,7 @@ public class JarReader {
 	private final JarRootEntry jar;
 	private boolean joinMethodEntries = true;
 	private Remapper remapper;
+
 	public JarReader(JarRootEntry jar) {
 		this.jar = jar;
 	}

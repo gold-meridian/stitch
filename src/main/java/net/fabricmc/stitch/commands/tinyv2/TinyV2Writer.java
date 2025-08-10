@@ -159,6 +159,7 @@ public class TinyV2Writer {
 		public static final String FIELD = "f";
 		public static final String COMMENT = "c";
 		public static final String CLASS = "c";
+
 		private Prefixes() {
 		}
 	}
@@ -176,6 +177,7 @@ public class TinyV2Writer {
 		public static final int FIELD_COMMENT = 2;
 		public static final int PARAMETER_COMMENT = 3;
 		public static final int LOCAL_VARIABLE_COMMENT = 3;
+
 		private Indents() {
 		}
 

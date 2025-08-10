@@ -32,6 +32,7 @@ public class TinyMethod implements Comparable<TinyMethod>, Mapping {
 	 * the descriptor will be in named.
 	 */
 	private String methodDescriptorInFirstNamespace;
+
 	public TinyMethod(String methodDescriptorInFirstNamespace, List<String> methodNames, Collection<TinyMethodParameter> parameters, Collection<TinyLocalVariable> localVariables, Collection<String> comments) {
 		this.methodDescriptorInFirstNamespace = methodDescriptorInFirstNamespace;
 		this.methodNames = methodNames;

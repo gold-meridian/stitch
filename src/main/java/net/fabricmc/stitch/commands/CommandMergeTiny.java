@@ -265,6 +265,7 @@ public class CommandMergeTiny extends Command {
 		final Map<String, Integer> namespacesToIds = new HashMap<>();
 		private final Map<String, ClassLine> nativeClassLines = new HashMap<>();
 		private final List<TinyLine> lines = new ArrayList<>();
+
 		public TinyFile(Path file) throws IOException {
 			try (BufferedReader reader = Files.newBufferedReader(file)) {
 				String[] header = (firstLine = reader.readLine()).split("\t");

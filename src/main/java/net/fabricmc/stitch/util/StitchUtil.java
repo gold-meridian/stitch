@@ -44,6 +44,7 @@ public final class StitchUtil {
 	static {
 		jfsArgsCreate.put("create", "true");
 	}
+
 	private StitchUtil() {
 
 	}
